@@ -1,0 +1,3 @@
+- org: eksad
+  project: helloworldproject
+  local: true
