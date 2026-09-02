@@ -1,3 +1,50 @@
+# Modul 5: Hands-on Komprehensif E-Commerce & Checkout Microservice
+
+---
+
+## 1. Deskripsi Proyek & Arsitektur
+
+Pada modul ini, kita menggabungkan **seluruh konsep Ballerina (Modul 1 s.d Modul 4)** ke dalam sebuah microservice bisnis nyata bernama **`E-Commerce & Checkout Microservice`** (`/ecommerce`).
+
+### Fitur-Fitur Layanan:
+1. **In-Memory Catalog Storage**: Menyimpan data produk menggunakan `table<Product> key(id)`.
+2. **Katalog & Filter Produk (`GET /ecommerce/products`)**: Filter produk berbasis kategori dan status ketersediaan stok menggunakan **Query Expression**.
+3. **Detail Produk (`GET /ecommerce/products/[string id]`)**: Mengambil data produk berdasarkan ID unik dengan respon data atau status `404 Not Found`.
+4. **Transaksi Checkout (`POST /ecommerce/checkout`)**:
+   - Memvalidasi token autentikasi pada Header HTTP (`Authorization: Bearer BALLERINA_SECRET`).
+   - Menerima payload JSON pesanan (`@http:Payload CheckoutRequest`).
+   - Memvalidasi ketersediaan stok dan kuantitas input.
+   - Menghitung diskon keanggotaan (`VIP`: 15%, `GOLD`: 10%, `REGULAR`: 0%) menggunakan **Pattern Matching `match`**.
+   - Menghitung biaya admin metode pembayaran (`BANK_TRANSFER`, `EWALLET`, `CREDIT_CARD`).
+   - Merangkai dan mengembalikan respon sukses dengan status `201 Created`.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client
+    participant API as Ballerina Service (/ecommerce)
+    participant Store as In-Memory Table (productTable)
+
+    Client->>API: GET /ecommerce/products?category=ELECTRONICS
+    API->>Store: Query Expression (where category == 'ELECTRONICS' && stock > 0)
+    Store-->>API: Filtered Products List
+    API-->>Client: 200 OK (Array of Products)
+
+    Client->>API: POST /ecommerce/checkout (Auth Header + Order Payload)
+    Note over API: 1. Validasi Token Security (Bearer BALLERINA_SECRET)
+    Note over API: 2. Validasi Ketersediaan Stok Produk
+    Note over API: 3. Pattern Matching (Diskon & Biaya Admin)
+    Note over API: 4. Kalkulasi Grand Total Biaya
+    API-->>Client: 201 Created (Checkout Detail JSON)
+```
+
+---
+
+## 2. Kode Lengkap Proyek (`hello/main.bal`)
+
+File ini sudah siap dieksekusi di dalam folder `hello/main.bal`:
+
+```ballerina
 import ballerina/http;
 import ballerina/time;
 
@@ -232,3 +279,132 @@ service /ecommerce on new http:Listener(9090) {
         };
     }
 }
+```
+
+---
+
+## 3. Bedah Detail Setiap Baris Kode (Line-by-Line Breakdown)
+
+1. **Definisi Record (Baris 7 - 65)**:
+   - `Product`, `CheckoutRequest`, `PaymentDetail`, dan `CheckoutResponse` didefinisikan sebagai *Closed Record* (`{| |}`) untuk menjamin validitas kontrak data secara type-safe.
+   - Field `price`, `subtotal`, `discountAmount`, `adminFee`, dan `grandTotal` bertipe `decimal` untuk presisi keuangan.
+2. **In-Memory Table Storage (Baris 69 - 76)**:
+   - `table<Product> key(id)` membuat tabel berindeks kunci primer `id` dengan akses $O(1)$.
+3. **HTTP Service Listener (Baris 80)**:
+   - Menjalankan endpoint pada port `9090` dengan base path `/ecommerce`.
+4. **Query Expression Filtering (Baris 85 - 94)**:
+   - `from var p in productTable where ... select p`: Memfilter produk langsung di memori secara deklaratif.
+5. **Path Parameter Binding & 404 Response (Baris 97 - 110)**:
+   - `products/[string id]`: Mengambil nilai ID dari URL dan mengembalikan `<http:NotFound>` jika item tidak ada.
+6. **Header, Payload Binding & Security (Baris 113 - 134)**:
+   - Mengambil token auth via `@http:Header` dan body JSON via `@http:Payload`.
+   - Mengembalikan `<http:Unauthorized>` jika token bukan `"Bearer BALLERINA_SECRET"`.
+7. **Business & Stock Validation (Baris 136 - 165)**:
+   - Memeriksa batas kuantitas dan ketersediaan stok produk, mengembalikan `<http:BadRequest>` jika gagal.
+8. **Pattern Matching Diskon & Biaya Admin (Baris 167 - 195)**:
+   - Menggunakan statement `match` untuk menentukan persentase potongan diskon dan tarif transaksi.
+9. **Kalkulasi & Respon 201 Created (Baris 197 - 227)**:
+   - Mengkalkulasi subtotal, diskon, biaya admin, dan grand total, lalu membungkusnya ke dalam tipe `<http:Created>` (HTTP 201).
+
+---
+
+## 4. Panduan Menjalankan & Menguji Step-by-Step
+
+### Langkah 1: Jalankan Microservice di Terminal
+```powershell
+cd C:\Users\eksad\OneDrive\Documents\assa\selfLearning\hello
+bal run
+```
+
+---
+
+### Langkah 2: Skenario Pengujian
+
+#### Skenario 1: Ambil Katalog Produk Elektronik (Query Filter)
+```powershell
+Invoke-RestMethod -Uri "http://localhost:9090/ecommerce/products?category=ELECTRONICS" -Method Get | ConvertTo-Json
+```
+
+---
+
+#### Skenario 2: Ambil Detail Produk Tertentu (Path Parameter)
+```powershell
+Invoke-RestMethod -Uri "http://localhost:9090/ecommerce/products/PRD-001" -Method Get | ConvertTo-Json
+```
+
+---
+
+#### Skenario 3: Transaksi Checkout Sukses (201 Created)
+```powershell
+$headers = @{
+    "Authorization" = "Bearer BALLERINA_SECRET"
+    "X-Channel"     = "MOBILE_APP"
+    "Content-Type"  = "application/json"
+}
+
+$body = @{
+    customerId     = "CUST-007"
+    customerName   = "Jovan Pratama"
+    membershipTier = "VIP"
+    productId      = "PRD-001"
+    quantity       = 1
+    paymentMethod  = "BANK_TRANSFER"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "http://localhost:9090/ecommerce/checkout" -Method Post -Headers $headers -Body $body | ConvertTo-Json
+```
+
+**Expected Response (201 Created):**
+```json
+{
+  "status": "SUCCESS",
+  "orderId": "ORD-1772600000-CUST-007",
+  "customerName": "Jovan Pratama",
+  "productName": "Laptop ASUS ROG",
+  "quantity": 1,
+  "payment": {
+    "subtotal": 20000000,
+    "discountAmount": 3000000,
+    "adminFee": 4000,
+    "grandTotal": 17004000
+  },
+  "channel": "MOBILE_APP",
+  "processedAt": "2026-09-02T11:45:00.000Z"
+}
+```
+
+---
+
+#### Skenario 4: Uji Validasi Keamanan Token Salah (401 Unauthorized)
+```powershell
+$headers = @{
+    "Authorization" = "Bearer WRONG_TOKEN"
+    "Content-Type"  = "application/json"
+}
+$body = @{ customerId="CUST-001"; productId="PRD-001"; quantity=1; membershipTier="REGULAR"; paymentMethod="EWALLET"; customerName="Test" } | ConvertTo-Json
+
+Invoke-RestMethod -Uri "http://localhost:9090/ecommerce/checkout" -Method Post -Headers $headers -Body $body
+```
+
+---
+
+#### Skenario 5: Uji Validasi Stok Melebihi Batas (400 Bad Request)
+```powershell
+$headers = @{
+    "Authorization" = "Bearer BALLERINA_SECRET"
+    "Content-Type"  = "application/json"
+}
+$body = @{ customerId="CUST-001"; productId="PRD-001"; quantity=999; membershipTier="REGULAR"; paymentMethod="EWALLET"; customerName="Test" } | ConvertTo-Json
+
+Invoke-RestMethod -Uri "http://localhost:9090/ecommerce/checkout" -Method Post -Headers $headers -Body $body
+```
+
+---
+
+## 5. Ringkasan & Checklist Akhir
+
+- [x] Menguasai arsitektur dan sintaks bahasa Ballerina.
+- [x] Menguasai pembuatan microservices REST API lengkap di port `9090`.
+- [x] Menguasai validasi header security, body payload, dan ketersediaan stok.
+- [x] Menguasai komputasi finansial dengan presisi tipe `decimal`.
+- [x] Berhasil mengeksekusi dan menguji 5 skenario integrasi secara end-to-end.

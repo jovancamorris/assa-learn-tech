@@ -470,6 +470,252 @@ Masukkan seluruh kode konfigurasi berikut ke dalam file `OrderCheckoutAPI.xml`:
 
 ---
 
+### Bedah Detail Setiap Baris Kode (Line-by-Line Code Breakdown)
+
+Berikut adalah penjelasan teknis mendalam untuk setiap blok dan baris kode pada `OrderCheckoutAPI.xml`:
+
+#### 1. Deklarasi API & Resource (Baris 1 - 4)
+```xml
+<api xmlns="http://ws.apache.org/ns/synapse" name="OrderCheckoutAPI" context="/order">
+    <resource methods="POST" uri-template="/checkout">
+        <inSequence>
+```
+- **`xmlns="http://ws.apache.org/ns/synapse"`**: Mendefinisikan XML namespace standar Apache Synapse engine WSO2.
+- **`name="OrderCheckoutAPI"`**: Nama unik internal API pada Micro Integrator runtime.
+- **`context="/order"`**: Base path context untuk API ini (`http://localhost:8290/order`).
+- **`resource methods="POST" uri-template="/checkout"`**: Menentukan bahwa resource ini hanya menerima metode HTTP `POST` dengan endpoint `/checkout` (URL lengkap: `http://localhost:8290/order/checkout`).
+- **`<inSequence>`**: Wadah urutan pemrosesan pesan request yang masuk dari client sebelum diteruskan atau dibalas.
+
+---
+
+#### 2. Ekstraksi Transport Scope (Headers) & Audit Log (Baris 6 - 15)
+```xml
+<property name="authHeader" expression="get-property('transport', 'Authorization')" scope="default"/>
+<property name="channelId" expression="get-property('transport', 'Channel-ID')" scope="default"/>
+
+<log level="custom">
+    <property name="STEP" value="1. Menerima Request Order Checkout"/>
+    <property name="Channel-ID" expression="get-property('channelId')"/>
+</log>
+```
+- **`get-property('transport', 'Authorization')`**: Mengambil nilai HTTP header `Authorization` dari request client (misal: `Bearer SECRET123`) dan menyimpannya ke variabel context lokal (`authHeader`) di `default scope`.
+- **`get-property('transport', 'Channel-ID')`**: Mengambil nilai HTTP header kustom `Channel-ID` (misal: `MOBILE_APP`) dan menyimpannya ke variabel `channelId`.
+- **`<log level="custom">`**: Mencetak log terstruktur ke console/terminal runtime WSO2.
+  - `value="1. Menerima Request Order Checkout"`: Menulis string statis penanda langkah.
+  - `expression="get-property('channelId')"`: Menuliskan nilai dinamis dari variabel `channelId`.
+
+---
+
+#### 3. Security Filter: Validasi Autentikasi Bearer Token (Baris 17 - 39)
+```xml
+<filter source="get-property('authHeader')" regex="Bearer SECRET123">
+    <then>
+        <log level="custom">
+            <property name="AUTH" value="Autentikasi Berhasil"/>
+        </log>
+    </then>
+    <else>
+        <property name="HTTP_SC" value="401" scope="axis2"/>
+        <payloadFactory media-type="json">
+            <format>
+                {
+                    "status": "UNAUTHORIZED",
+                    "message": "Token otentikasi tidak valid atau header Authorization tidak ditemukan."
+                }
+            </format>
+            <args/>
+        </payloadFactory>
+        <respond/>
+    </else>
+</filter>
+```
+- **`<filter source="..." regex="...">`**: Mengevaluasi apakah isi variabel `authHeader` cocok dengan pola regex `"Bearer SECRET123"`.
+- **`<then>` (Kondisi Terpenuhi)**: Jika token cocok, alur mencetak log `"Autentikasi Berhasil"` dan melanjutkan eksekusi ke mediator berikutnya.
+- **`<else>` (Kondisi Gagal / Token Salah)**:
+  - `<property name="HTTP_SC" value="401" scope="axis2"/>`: Mengubah status response HTTP di level engine transport Axis2 menjadi `401 Unauthorized`.
+  - `<payloadFactory>`: Merancang pesan error JSON terstruktur.
+  - `<respond/>`: **Langsung menghentikan alur mediasi saat itu juga** dan mengirimkan respons JSON 401 ke client.
+
+---
+
+#### 4. Ekstraksi Payload JSON Request (Baris 41 - 50)
+```xml
+<property name="orderId" expression="json-eval($.order_id)" scope="default"/>
+<property name="customerId" expression="json-eval($.customer_id)" scope="default"/>
+<property name="membership" expression="json-eval($.membership)" scope="default"/>
+<property name="itemName" expression="json-eval($.item)" scope="default"/>
+<property name="itemPrice" expression="json-eval($.price)" scope="default"/>
+<property name="itemQty" expression="json-eval($.quantity)" scope="default"/>
+<property name="paymentMethod" expression="json-eval($.payment_method)" scope="default"/>
+```
+- **`expression="json-eval($.order_id)"`**: Menggunakan sintaks JSONPath untuk membaca nilai field `order_id` dari body JSON request dan menyimpannya ke variabel context `orderId`.
+- **Fleksibilitas Default Type**: Tidak menyertakan `type="DOUBLE"`/`type="INTEGER"` secara eksplisit agar sistem tidak melempar `NumberFormatException` jika data kosong/belum terisi.
+
+---
+
+#### 5. Filter Validasi Bisnis: Pengecekan Batas Nilai (Baris 52 - 70)
+```xml
+<filter xpath="get-property('itemPrice') &lt;= 0 or get-property('itemQty') &lt;= 0">
+    <then>
+        <property name="HTTP_SC" value="400" scope="axis2"/>
+        <payloadFactory media-type="json">
+            <format>
+                {
+                    "status": "BAD_REQUEST",
+                    "message": "Harga (price) dan jumlah (quantity) harus lebih besar dari 0."
+                }
+            </format>
+            <args/>
+        </payloadFactory>
+        <respond/>
+    </then>
+    <else/>
+</filter>
+```
+- **`xpath="... &lt;= 0 or ..."`**: Menggunakan ekspresi XPath boolean. Entitas `&lt;=` adalah XML escaping untuk operator `<=`.
+- Jika `price <= 0` ATAU `quantity <= 0`, sistem menyetel status code `HTTP_SC` ke `400 Bad Request`, menyusun payload JSON penolakan, lalu memanggil `<respond/>`.
+
+---
+
+#### 6. Switch Mediator: Penentuan Diskon Membership (Baris 72 - 88)
+```xml
+<switch source="get-property('membership')">
+    <case regex="VIP">
+        <property name="discountRate" value="15%" scope="default"/>
+        <property name="tierName" value="VIP Priority Customer" scope="default"/>
+    </case>
+    <case regex="GOLD">
+        <property name="discountRate" value="10%" scope="default"/>
+        <property name="tierName" value="Gold Member" scope="default"/>
+    </case>
+    <default>
+        <property name="discountRate" value="0%" scope="default"/>
+        <property name="tierName" value="Regular Member" scope="default"/>
+    </default>
+</switch>
+```
+- **`<switch source="get-property('membership')">`**: Membaca string `membership` (`VIP`, `GOLD`, dll).
+- **`<case regex="...">`**: Memilih blok case yang cocok untuk menyetel variabel diskon dan label tier pelanggan.
+- **`<default>`**: Dijalankan jika nilai `membership` tidak cocok dengan case mana pun.
+
+---
+
+#### 7. Switch Mediator: Penentuan Biaya Admin Pembayaran (Baris 90 - 106)
+```xml
+<switch source="get-property('paymentMethod')">
+    <case regex="BANK_TRANSFER">
+        <property name="adminFee" value="4000" scope="default"/>
+    </case>
+    <case regex="E_WALLET">
+        <property name="adminFee" value="1500" scope="default"/>
+    </case>
+    <case regex="CREDIT_CARD">
+        <property name="adminFee" value="25000" scope="default"/>
+    </case>
+    <default>
+        <property name="adminFee" value="0" scope="default"/>
+    </default>
+</switch>
+```
+- Mengkalkulasi biaya transaksi sesuai metode bayar yang dipilih: transfer bank (`4000`), dompet digital (`1500`), kartu kredit (`25000`), atau lainnya (`0`).
+
+---
+
+#### 8. Header Mediator: Injeksi Custom Response Header (Baris 108 - 112)
+```xml
+<header name="X-Trace-ID" expression="fn:concat('TRX-', get-property('orderId'))" scope="transport"/>
+```
+- **`scope="transport"`**: Menargetkan HTTP header response.
+- **`fn:concat(...)`**: Fungsi XPath standar untuk menggabungkan string `'TRX-'` dengan nilai `orderId`, sehingga client akan menerima header HTTP misalnya `X-Trace-ID: TRX-ORD-9901`.
+
+---
+
+#### 9. PayloadFactory Mediator: Merangkai Response JSON Lengkap (Baris 114 - 150)
+```xml
+<payloadFactory media-type="json">
+    <format>
+        {
+            "status": "SUCCESS",
+            "data": {
+                "order_id": "$1",
+                "customer_id": "$2",
+                "tier": "$3",
+                "item_name": "$4",
+                "unit_price": $5,
+                "quantity": $6,
+                "discount": "$7",
+                "payment": {
+                    "method": "$8",
+                    "admin_fee": $9
+                },
+                "channel": "$10",
+                "processed_at": "$11"
+            }
+        }
+    </format>
+    <args>
+        <arg evaluator="xml" expression="get-property('orderId')"/>
+        <arg evaluator="xml" expression="get-property('customerId')"/>
+        <arg evaluator="xml" expression="get-property('tierName')"/>
+        <arg evaluator="xml" expression="get-property('itemName')"/>
+        <arg evaluator="xml" expression="get-property('itemPrice')"/>
+        <arg evaluator="xml" expression="get-property('itemQty')"/>
+        <arg evaluator="xml" expression="get-property('discountRate')"/>
+        <arg evaluator="xml" expression="get-property('paymentMethod')"/>
+        <arg evaluator="xml" expression="get-property('adminFee')"/>
+        <arg evaluator="xml" expression="get-property('channelId')"/>
+        <arg evaluator="xml" expression="get-property('SYSTEM_DATE', 'yyyy-MM-dd HH:mm:ss')"/>
+    </args>
+</payloadFactory>
+```
+- **Aturan Kutip JSON Penting**:
+  - `"$1"`, `"$2"`, `"$3"`, `"$4"`, `"$7"`, `"$8"`, `"$10"`, `"$11"`: Menggunakan tanda kutip ganda karena bernilai **String**.
+  - `$5`, `$6`, `$9`: **Tidak menggunakan tanda kutip ganda** agar di-render sebagai tipe data **Angka / Numeric** (`unit_price: 20000000`, bukan `"20000000"`).
+- Argumen `$1` s.d `$11` dipetakan secara berurutan dari daftar `<arg>` di bawahnya.
+
+---
+
+#### 10. Penyelesaian Request & Pengiriman Response (Baris 152 - 157)
+```xml
+<property name="HTTP_SC" value="200" scope="axis2"/>
+<respond/>
+```
+- Menetapkan HTTP status code `200 OK` ke dalam `axis2 scope`.
+- `<respond/>` langsung mengirimkan payload JSON ke pemanggil dan mengakhiri pemrosesan.
+
+---
+
+#### 11. Fault Sequence: Penanganan Error Terpusat (Baris 159 - 184)
+```xml
+<faultSequence>
+    <log level="custom">
+        <property name="ERROR" value="Terjadi exception pada alur OrderCheckoutAPI"/>
+        <property name="CODE" expression="get-property('ERROR_CODE')"/>
+        <property name="MESSAGE" expression="get-property('ERROR_MESSAGE')"/>
+    </log>
+    <property name="HTTP_SC" value="500" scope="axis2"/>
+    <payloadFactory media-type="json">
+        <format>
+            {
+                "status": "INTERNAL_SERVER_ERROR",
+                "error_code": "$1",
+                "error_message": "$2"
+            }
+        </format>
+        <args>
+            <arg evaluator="xml" expression="get-property('ERROR_CODE')"/>
+            <arg evaluator="xml" expression="get-property('ERROR_MESSAGE')"/>
+        </args>
+    </payloadFactory>
+    <respond/>
+</faultSequence>
+```
+- **`<faultSequence>`**: Otomatis dipicu jika terjadi exception atau error tak tertangani di dalam `<inSequence>`.
+- **`ERROR_CODE` & `ERROR_MESSAGE`**: Variabel bawaan Synapse yang otomatis terisi saat error terjadi.
+- Menetapkan status `500 Internal Server Error` dan merespon dalam format JSON standar agar client tidak menerima halaman HTML crash default.
+
+---
+
 ### Langkah 3: Menjalankan / Re-deploy di WSO2 Micro Integrator
 Pastikan Micro Integrator Server sedang aktif (via extension panel WSO2 Micro Integrator atau `micro-integrator.bat`). Artefak API baru akan otomatis terdeteksi atau dideploy.
 
@@ -571,12 +817,27 @@ curl.exe -X POST http://localhost:8290/order/checkout `
 
 ---
 
-## 5. Ringkasan & Checklist Modul 2
+## 5. Panduan Troubleshooting & Catatan Praktis Modul 2
+
+### 1. Error: `Unknown type : DOUBLE for the property mediator`
+- **Penyebab**: Menambahkan atribut tipe `type="DOUBLE"` atau `type="INTEGER"` pada `<property>` yang membaca data via `json-eval`. Ketika payload JSON kosong, salah format, atau field tidak ditemukan, WSO2 mencoba mengubah string kosong `""` menjadi angka dan melempar exception `NumberFormatException`.
+- **Solusi Best Practice**: Cukup deklarasikan properti tanpa tipe kaku (`<property name="..." expression="json-eval(...)"/>`). Engine Synapse XML akan memperlakukannya secara aman, dan evaluasi numerik di `<filter>` atau `<payloadFactory>` tetap berjalan sempurna.
+
+### 2. Isu Escaping JSON pada Terminal Windows PowerShell (`curl.exe`)
+- **Penyebab**: Di PowerShell, tanda petik satu `'{"key":"value"}'` menyebabkan petik ganda di dalamnya hilang saat diteruskan ke program native `curl.exe`, sehingga server menerima JSON yang cacat.
+- **Solusi**:
+  1. **Gunakan `Invoke-RestMethod`**: Format native PowerShell yang bersih dan mendukung objek hashtable secara langsung.
+  2. **Gunakan Escape Backslash `\"`**: Jika tetap menggunakan `curl.exe`, tuliskan `{\"key\":\"value\"}`.
+
+---
+
+## 6. Ringkasan & Checklist Modul 2
 
 - [x] Paham 3 Scope utama: `default` (variabel lokal), `axis2` (HTTP status/engine), dan `transport` (HTTP headers).
-- [x] Menguasai `<property>` dengan nilai statis maupun dinamis (`json-eval`, `get-property`, dan tipe data).
+- [x] Menguasai `<property>` dengan nilai statis maupun dinamis (`json-eval`, `get-property`, dan fleksibilitas tipe).
 - [x] Menguasai perancangan payload JSON dinamis dengan `<payloadFactory>` (perbedaan string `"$1"` vs numeric `$2`).
 - [x] Menguasai alur percabangan dengan `<filter>` (if-else) dan `<switch>` (multi-case).
 - [x] Menguasai manipulasi HTTP Headers menggunakan `<header>`.
 - [x] Memahami kontrol alur dengan `<respond>` dan penanganan error terpusat di `<faultSequence>`.
+- [x] Memahami penanganan exception runtime (`faultSequence`, `ERROR_CODE`, `ERROR_MESSAGE`).
 - [x] Berhasil mengimplementasikan dan menguji API Order & Payment Processing secara end-to-end.
