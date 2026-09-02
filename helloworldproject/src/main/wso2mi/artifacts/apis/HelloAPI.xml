@@ -13,7 +13,7 @@
                 <format>
                     {
                         "status": "SUCCESS",
-                        "message": "Halo, $1! Selamat datang di WSO2 Micro Integrator.",
+                        "message": "Halo, $1! ganteng banget! Selamat datang di WSO2 Micro Integrator.",
                         "server_time": "$2"
                     }
                 </format>
