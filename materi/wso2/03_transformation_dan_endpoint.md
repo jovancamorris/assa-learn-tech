@@ -107,12 +107,12 @@ Endpoint merepresentasikan target tujuan tempat request akan dikirimkan.
 
 ```mermaid
 graph TD
-    EP[WSO2 Endpoints]
-    EP --> HTTP[HTTP Endpoint\nREST URI Template]
-    EP --> Address[Address Endpoint\nDirect URL / SOAP]
-    EP --> WSDL[WSDL Endpoint\nWSDL-based Contract]
-    EP --> Failover[Failover Endpoint\nAutomatic Secondary Fallback]
-    EP --> LoadBalance[Load Balance Endpoint\nTraffic Distribution]
+    EP["WSO2 Endpoints"]
+    EP --> HTTP["HTTP Endpoint<br/>REST URI Template"]
+    EP --> Address["Address Endpoint<br/>Direct URL / SOAP"]
+    EP --> WSDL["WSDL Endpoint<br/>WSDL-based Contract"]
+    EP --> Failover["Failover Endpoint<br/>Automatic Fallback"]
+    EP --> LoadBalance["Load Balance Endpoint<br/>Traffic Distribution"]
 ```
 
 ### 1. HTTP Endpoint (RESTful Services)

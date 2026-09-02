@@ -8,20 +8,22 @@ Sering kali sebuah proses bisnis memerlukan interaksi dengan lebih dari satu bac
 
 ```mermaid
 graph TD
-    Client[Client Request] --> WSO2[WSO2 Micro Integrator]
+    Client["Client Request"] --> WSO2["WSO2 Micro Integrator"]
     
-    subgraph Sequential [Pola 1: Sequential Chaining]
-        WSO2 --> S1[Service A: Auth]
-        S1 --> S2[Service B: Get Profile]
-        S2 --> S3[Service C: Update Balance]
+    subgraph Sequential ["Pola 1: Sequential Chaining"]
+        WSO2 --> S1["Service A: Auth"]
+        S1 --> S2["Service B: Get Profile"]
+        S2 --> S3["Service C: Update Balance"]
     end
 
-    subgraph ScatterGather [Pola 2: Scatter-Gather / Parallel]
-        WSO2 --> C[Clone / Iterate]
-        C --> B1[Backend Hotel]
-        C --> B2[Backend Flight]
-        C --> B3[Backend Train]
-        B1 & B2 & B3 --> Agg[Aggregate Mediator]
+    subgraph ScatterGather ["Pola 2: Scatter-Gather / Parallel"]
+        WSO2 --> C["Clone / Iterate"]
+        C --> B1["Backend Hotel"]
+        C --> B2["Backend Flight"]
+        C --> B3["Backend Train"]
+        B1 --> Agg["Aggregate Mediator"]
+        B2 --> Agg
+        B3 --> Agg
     end
 ```
 

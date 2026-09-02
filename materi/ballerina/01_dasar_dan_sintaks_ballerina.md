@@ -10,9 +10,9 @@ Berbeda dengan bahasa pemrograman tradisional (Java, Python, Go) yang memperlaku
 
 ```mermaid
 graph LR
-    Client([Client / Frontend]) -->|HTTP / REST| Bal[Ballerina Service]
-    Bal -->|http:Client (->)| ExtAPI[External REST API]
-    Bal -->|mysql:Client (->)| DB[(SQL Database)]
+    Client["Client / Frontend"] -->|"HTTP / REST"| Bal["Ballerina Service"]
+    Bal -->|"http:Client remote call"| ExtAPI["External REST API"]
+    Bal -->|"mysql:Client remote call"| DB[("SQL Database")]
 ```
 
 ### Keunggulan Utama:

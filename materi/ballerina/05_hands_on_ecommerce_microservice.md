@@ -22,18 +22,18 @@ Pada modul ini, kita menggabungkan **seluruh konsep Ballerina (Modul 1 s.d Modul
 sequenceDiagram
     autonumber
     actor Client
-    participant API as Ballerina Service (/ecommerce)
-    participant Store as In-Memory Table (productTable)
+    participant API as "Ballerina Service (/ecommerce)"
+    participant Store as "In-Memory Table (productTable)"
 
     Client->>API: GET /ecommerce/products?category=ELECTRONICS
-    API->>Store: Query Expression (where category == 'ELECTRONICS' && stock > 0)
+    API->>Store: Query Expression (Filter category & stock)
     Store-->>API: Filtered Products List
     API-->>Client: 200 OK (Array of Products)
 
-    Client->>API: POST /ecommerce/checkout (Auth Header + Order Payload)
-    Note over API: 1. Validasi Token Security (Bearer BALLERINA_SECRET)
+    Client->>API: POST /ecommerce/checkout
+    Note over API: 1. Validasi Token Security
     Note over API: 2. Validasi Ketersediaan Stok Produk
-    Note over API: 3. Pattern Matching (Diskon & Biaya Admin)
+    Note over API: 3. Pattern Matching (Diskon & Fee)
     Note over API: 4. Kalkulasi Grand Total Biaya
     API-->>Client: 201 Created (Checkout Detail JSON)
 ```

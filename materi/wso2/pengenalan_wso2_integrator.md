@@ -10,11 +10,11 @@ WSO2 Integrator bertindak sebagai **Enterprise Service Bus (ESB)** dan **Integra
 
 ```mermaid
 graph LR
-    Client([Client / Mobile / Web]) -->|REST / JSON| WSO2[WSO2 Micro Integrator]
-    WSO2 -->|SOAP / XML| Legacy[Legacy Core Banking]
-    WSO2 -->|SQL| DB[(Database ERP)]
-    WSO2 -->|JMS / Kafka| Broker[Message Queue]
-    WSO2 -->|REST API| Cloud[Cloud SaaS / Salesforce]
+    Client["Client / Mobile / Web"] -->|"REST / JSON"| WSO2["WSO2 Micro Integrator"]
+    WSO2 -->|"SOAP / XML"| Legacy["Legacy Core Banking"]
+    WSO2 -->|"SQL"| DB[("Database ERP")]
+    WSO2 -->|"JMS / Kafka"| Broker["Message Queue"]
+    WSO2 -->|"REST API"| Cloud["Cloud SaaS / Salesforce"]
 ```
 
 ### Mengapa Membutuhkan Integrasi Middleware?
@@ -63,7 +63,7 @@ SOAP sangat populer pada era 2000-an dan hingga kini masih menjadi tulang punggu
 
 ```mermaid
 flowchart LR
-    subgraph SOAP Envelope [Struktur Pesan SOAP XML]
+    subgraph SOAP_Envelope ["Struktur Pesan SOAP XML"]
         direction TB
         Header["Header (Opsional: WS-Security, Auth Token, Routing)"]
         Body["Body (Wajib: Data Request / Response / Fault)"]
@@ -126,16 +126,16 @@ Di dunia industri nyata:
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Mobile as Mobile App (Client)
-    participant WSO2 as WSO2 Micro Integrator
-    participant Backend as Core Banking (SOAP)
+    actor Mobile as "Mobile App (Client)"
+    participant WSO2 as "WSO2 Micro Integrator"
+    participant Backend as "Core Banking (SOAP)"
 
-    Mobile->>WSO2: POST /api/balance (JSON: {"acc": "12345"})
+    Mobile->>WSO2: POST /api/balance
     Note over WSO2: WSO2 mengubah JSON ke SOAP XML Envelope & inject Auth Header
-    WSO2->>Backend: POST /ws/AccountService (SOAP XML)
-    Backend-->>WSO2: 200 OK (SOAP XML Response: <Balance>5000000</Balance>)
+    WSO2->>Backend: POST /ws/AccountService
+    Backend-->>WSO2: 200 OK (SOAP XML Response)
     Note over WSO2: WSO2 mengekstrak data XML & mengubahnya menjadi JSON
-    WSO2-->>Mobile: 200 OK (JSON: {"account": "12345", "balance": 5000000})
+    WSO2-->>Mobile: 200 OK (JSON Response)
 ```
 
 ---
@@ -146,22 +146,22 @@ WSO2 Integrator menggunakan arsitektur berbasis engine **Apache Synapse**. Berik
 
 ```mermaid
 flowchart TD
-    Req([Request Masuk]) --> Inbound[API / Proxy Service / Inbound Endpoint]
-    Inbound --> InSeq[InSequence / Mediation Flow]
+    Req["Request Masuk"] --> Inbound["API / Proxy Service / Inbound Endpoint"]
+    Inbound --> InSeq["InSequence / Mediation Flow"]
     
-    subgraph Mediators [Mediator Execution]
-        InSeq --> M1[Log Mediator]
-        M1 --> M2[Property / Header Mediator]
-        M2 --> M3[PayloadFactory / Transformation]
-        M3 --> Call[Call / Send Mediator]
+    subgraph Mediators ["Mediator Execution"]
+        InSeq --> M1["Log Mediator"]
+        M1 --> M2["Property / Header Mediator"]
+        M2 --> M3["PayloadFactory / Transformation"]
+        M3 --> Call["Call / Send Mediator"]
     end
 
-    Call --> EP[Endpoint / Backend Service]
-    EP --> OutSeq[Response Handling / OutSequence]
-    OutSeq --> Resp([Response ke Client])
+    Call --> EP["Endpoint / Backend Service"]
+    EP --> OutSeq["Response Handling / OutSequence"]
+    OutSeq --> Resp["Response ke Client"]
 
-    InSeq -.->|Jika Error| FaultSeq[FaultSequence / Error Handler]
-    FaultSeq --> ErrResp([Custom Error Response])
+    InSeq -.->|"Jika Error"| FaultSeq["FaultSequence / Error Handler"]
+    FaultSeq --> ErrResp["Custom Error Response"]
 ```
 
 ### Penjelasan Komponen:
@@ -288,11 +288,11 @@ Untuk mengembangkan dan menjalankan proyek WSO2 Micro Integrator:
 
 ```mermaid
 graph TD
-    Step1["1. Dasar & Setup\n- Java JDK 11/17\n- VS Code + WSO2 MI Extension\n- Memahami Arsitektur Synapse"] --> Step2["2. Core Mediators\n- Log, Property, PayloadFactory\n- Call, Respond, Filter, Switch"]
-    Step2 --> Step3["3. Transformation & Endpoint\n- JSON to XML & XML to JSON\n- DataMapper\n- SOAP to REST Mediation\n- Failover & Load Balancing Endpoint"]
-    Step3 --> Step4["4. Orchestration & Error Handling\n- Call beberapa backend paralel/sekuensial\n- Clone & Aggregate\n- Fault Sequence & Error Codes"]
-    Step4 --> Step5["5. Asynchronous & Reliability\n- Message Store (JMS/RabbitMQ)\n- Message Processor (Store & Forward)\n- Dead Letter Queue (DLQ)"]
-    Step5 --> Step6["6. Deployment & Monitoring\n- Build .CAR (Carbon Application)\n- Containerization (Docker & Kubernetes)\n- MI Dashboard & Tracing"]
+    Step1["1. Dasar & Setup<br/>- Java JDK 11/17<br/>- VS Code + WSO2 MI Extension<br/>- Memahami Arsitektur Synapse"] --> Step2["2. Core Mediators<br/>- Log, Property, PayloadFactory<br/>- Call, Respond, Filter, Switch"]
+    Step2 --> Step3["3. Transformation & Endpoint<br/>- JSON to XML & XML to JSON<br/>- DataMapper<br/>- SOAP to REST Mediation<br/>- Failover & Load Balancing Endpoint"]
+    Step3 --> Step4["4. Orchestration & Error Handling<br/>- Call beberapa backend paralel/sekuensial<br/>- Clone & Aggregate<br/>- Fault Sequence & Error Codes"]
+    Step4 --> Step5["5. Asynchronous & Reliability<br/>- Message Store (JMS/RabbitMQ)<br/>- Message Processor (Store & Forward)<br/>- Dead Letter Queue (DLQ)"]
+    Step5 --> Step6["6. Deployment & Monitoring<br/>- Build .CAR (Carbon Application)<br/>- Containerization (Docker & Kubernetes)<br/>- MI Dashboard & Tracing"]
 ```
 
 ---

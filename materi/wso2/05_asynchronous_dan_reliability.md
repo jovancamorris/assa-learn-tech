@@ -12,14 +12,14 @@ Untuk mengatasi masalah ini, WSO2 MI menyediakan pola **Guaranteed Delivery (Sto
 sequenceDiagram
     autonumber
     actor Client
-    participant API as WSO2 Inbound API
-    participant Store as Message Store (RabbitMQ / Queue / DB)
-    participant Processor as Message Processor
-    participant Backend as Backend Core System
+    participant API as "WSO2 Inbound API"
+    participant Store as "Message Store (Queue / DB)"
+    participant Processor as "Message Processor"
+    participant Backend as "Backend Core System"
 
-    Client->>API: POST /order (Submit Transaksi)
-    API->>Store: Simpan pesan ke antrean (Store)
-    API-->>Client: 202 Accepted ("Order diterima & sedang diproses")
+    Client->>API: POST /order
+    API->>Store: Simpan pesan ke antrean
+    API-->>Client: 202 Accepted
     
     loop Polling & Forwarding
         Processor->>Store: Ambil pesan dari antrean

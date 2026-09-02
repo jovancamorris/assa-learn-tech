@@ -20,7 +20,7 @@ Baki ini berjalan melewati mediator satu per satu: `<log>` membaca isinya, `<pro
 
 ```mermaid
 flowchart LR
-    Client([Client Request]) --> MC[Synapse Message Context]
+    Client["Client Request"] --> MC["Synapse Message Context"]
     
     subgraph Inside_MC ["Anatomi di dalam Message Context"]
         Body["1. Payload / Body (JSON / XML)"]
@@ -29,10 +29,10 @@ flowchart LR
         Axis2["4. Engine Settings (axis2 scope)"]
     end
     
-    MC --> M1["<log> Mediator"]
-    M1 --> M2["<payloadFactory> Mediator"]
-    M2 --> M3["<property scope='axis2'>"]
-    M3 --> Resp["<respond/> ke Client"]
+    MC --> M1["Log Mediator"]
+    M1 --> M2["PayloadFactory Mediator"]
+    M2 --> M3["Property Mediator (axis2 scope)"]
+    M3 --> Resp["Respond Mediator (ke Client)"]
 ```
 
 ---
@@ -254,16 +254,16 @@ Pada bagian ini, kita akan membangun sebuah REST API bisnis nyata bernama **`Ord
 
 ```mermaid
 flowchart TD
-    Start([POST /order/checkout]) --> H1[1. Ekstrak Header Transport: Auth & Channel-ID]
-    H1 --> F1{2. Filter: Token Valid?}
-    F1 -- Tidak Valid --> R401["Set HTTP_SC 401 & Respond UNAUTHORIZED"]
-    F1 -- Valid --> P1[3. Ekstrak Body JSON: item, price, qty, membership, payment]
-    P1 --> F2{"4. Filter: price > 0 & qty > 0?"}
-    F2 -- Salah --> R400["Set HTTP_SC 400 & Respond BAD_REQUEST"]
-    F2 -- Benar --> S1["5. Switch Membership: Hitung Diskon (VIP: 15%, GOLD: 10%, Regular: 0%)"]
-    S1 --> S2["6. Switch Payment: Hitung Admin Fee (Bank: 4rb, E-Wallet: 1.5rb, CC: 25rb)"]
+    Start["POST /order/checkout"] --> H1["1. Ekstrak Header Transport: Auth & Channel-ID"]
+    H1 --> F1{"2. Filter: Token Valid?"}
+    F1 -- "Tidak Valid" --> R401["Set HTTP_SC 401 & Respond UNAUTHORIZED"]
+    F1 -- "Valid" --> P1["3. Ekstrak Body JSON: item, price, qty, membership, payment"]
+    P1 --> F2{"4. Filter: Price & Qty > 0?"}
+    F2 -- "Salah" --> R400["Set HTTP_SC 400 & Respond BAD_REQUEST"]
+    F2 -- "Benar" --> S1["5. Switch Membership: Hitung Diskon"]
+    S1 --> S2["6. Switch Payment: Hitung Admin Fee"]
     S2 --> H2["7. Header: Tambah X-Trace-ID"]
-    H2 --> PF["8. PayloadFactory: Susun JSON Response Ringkasan"]
+    H2 --> PF["8. PayloadFactory: Susun JSON Response"]
     PF --> R200["9. Set HTTP_SC 200 & Respond ke Client"]
 ```
 

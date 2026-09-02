@@ -125,8 +125,8 @@ Di Ballerina:
 ```mermaid
 flowchart TD
     Call["check performPayment(amount)"] --> Check{"Apakah Fungsi Mengembalikan Error?"}
-    Check -- Ya (Error) --> ReturnErr["Otomatis Return Error ke Caller"]
-    Check -- Tidak (Sukses) --> Continue["Lanjut ke Baris Kode Berikutnya"]
+    Check -- "Ya (Error)" --> ReturnErr["Otomatis Return Error ke Caller"]
+    Check -- "Tidak (Sukses)" --> Continue["Lanjut ke Baris Kode Berikutnya"]
 ```
 
 #### Contoh Penggunaan:

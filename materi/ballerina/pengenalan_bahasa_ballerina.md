@@ -10,10 +10,10 @@ Berbeda dengan bahasa pemrograman umum (seperti Java, Python, Go) yang memperlak
 
 ```mermaid
 graph LR
-    Client([Client / Frontend]) -->|HTTP / REST / GraphQL| Bal[Ballerina Microservice]
-    Bal -->|http:Client (->)| ExtAPI[External REST API]
-    Bal -->|kafka:Producer (->)| MQ[Kafka / RabbitMQ]
-    Bal -->|mysql:Client (->)| DB[(SQL Database)]
+    Client["Client / Frontend"] -->|"HTTP / REST / GraphQL"| Bal["Ballerina Microservice"]
+    Bal -->|"http:Client remote call"| ExtAPI["External REST API"]
+    Bal -->|"kafka:Producer remote call"| MQ["Kafka / RabbitMQ"]
+    Bal -->|"mysql:Client remote call"| DB[("SQL Database")]
 ```
 
 ---

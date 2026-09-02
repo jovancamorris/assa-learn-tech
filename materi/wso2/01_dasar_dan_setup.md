@@ -14,11 +14,11 @@ Dengan Antigravity IDE, pengembangan integrasi sistem menjadi jauh lebih cepat d
 
 ```mermaid
 graph TD
-    User([Developer / Integrator]) <--> AGY[Antigravity IDE Canvas]
-    AGY <--> Agent[Antigravity AI Agent & Autocomplete]
-    AGY --> Ext[WSO2 & Ballerina Extensions]
-    AGY --> Term[Integrated Terminal / Runtime]
-    Term --> Engine[WSO2 MI / Ballerina Engine]
+    User["Developer / Integrator"] <--> AGY["Antigravity IDE Canvas"]
+    AGY <--> Agent["Antigravity AI Agent & Autocomplete"]
+    AGY --> Ext["WSO2 & Ballerina Extensions"]
+    AGY --> Term["Integrated Terminal / Runtime"]
+    Term --> Engine["WSO2 MI / Ballerina Engine"]
 ```
 
 ---

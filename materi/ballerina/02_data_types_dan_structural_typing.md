@@ -113,16 +113,8 @@ public function main() {
 Dalam bahasa seperti Java/C#, kesamaan tipe didasarkan pada **nama kelas (Nominal Typing)**. Di Ballerina, kesamaan tipe didasarkan pada **struktur field dan isinya (Structural Typing)**.
 
 ```mermaid
-classDiagram
-    class TargetOrder {
-        +string orderId
-        +decimal amount
-    }
-    class SourceData {
-        +string orderId
-        +decimal amount
-    }
-    TargetOrder <.. SourceData : Kompatibel Otomatis karena Struktur Sama
+flowchart LR
+    SourceData["Source Data Record<br/>{orderId, amount}"] -.->|"Kompatibel Otomatis (Structural)"| TargetOrder["Target Order Record<br/>{orderId, amount}"]
 ```
 
 ### 1. Closed Record (`record {| ... |}`)

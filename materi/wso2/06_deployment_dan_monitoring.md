@@ -8,7 +8,7 @@ Seluruh konfigurasi API, sequence, endpoint, dan mediator di WSO2 dibungkus menj
 
 ```mermaid
 flowchart LR
-    Source[Kode XML Synapse & Schema] --> Maven["Maven Build (mvn clean install)"]
+    Source["Kode XML Synapse & Schema"] --> Maven["Maven Build (mvn clean install)"]
     Maven --> CAR["MyApplication_1.0.0.car"]
     CAR --> Deploy["Deploy ke WSO2 Micro Integrator Runtime / Docker"]
 ```
@@ -101,8 +101,8 @@ Dashboard web visual untuk memantau status aplikasi secara real-time.
 
 ```mermaid
 graph TD
-    MI[WSO2 Micro Integrator Node 1, 2, 3] -->|Management API Port 9164| Dashboard[WSO2 MI Dashboard Console]
-    Dashboard --> Admin((DevOps / Integration Engineer))
+    MI["WSO2 Micro Integrator Cluster"] -->|"Management API Port 9164"| Dashboard["WSO2 MI Dashboard Console"]
+    Dashboard --> Admin["DevOps / Integration Engineer"]
 ```
 
 ---
