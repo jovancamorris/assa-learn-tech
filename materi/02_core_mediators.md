@@ -4,27 +4,98 @@
 
 ## 1. Konsep Synapse Message Context & Scope
 
-Dalam WSO2 Integrator, setiap pesan yang masuk berjalan dalam sebuah **Message Context (MC)**. Data dan variabel dapat disimpan di berbagai tingkatan (*scopes*):
+### A. Apa itu Synapse Message Context?
+Secara sederhana, **Synapse Message Context (`MessageContext` / `MC`)** adalah **wadah atau amplop data** yang mewakili satu siklus hidup (*lifecycle*) pesan selama diproses di dalam WSO2 Micro Integrator / ESB.
+
+#### Analogi Sederhana: "Baki / Amplop Berjalan"
+Bayangkan ketika seorang client mengirim request HTTP ke WSO2 MI:
+- WSO2 MI akan membuat sebuah **baki berjalan (Message Context)**.
+- Di atas baki tersebut diletakkan:
+  1. **Isi Surat (Payload / Body)**: Data JSON atau XML yang dikirim oleh client.
+  2. **Catatan Tempel (Properties / Variables)**: Variabel lokal yang Anda buat selama alur integrasi.
+  3. **Label Pengiriman (Transport Headers)**: Header HTTP seperti `Authorization`, `Content-Type`, `User-Agent`.
+  4. **Instruksi Mesin (Axis2 / Engine Properties)**: HTTP Status Code (`200`, `400`, `500`), timeout koneksi, format serializer data.
+
+Baki ini berjalan melewati mediator satu per satu: `<log>` membaca isinya, `<property>` menempelkan variabel baru, `<payloadFactory>` mengubah isi suratnya, dan `<respond>` mengirimkannya kembali ke client.
 
 ```mermaid
-flowchart TD
-    Req[Incoming HTTP Request] --> MC[Synapse Message Context]
-    subgraph Scopes [Scoping Architecture]
-        DefaultScope["default scope: Variabel Synapse internal (get-property('varName'))"]
-        Axis2Scope["axis2 scope: Konfigurasi Transport/Engine (misal: HTTP_SC, messageType)"]
-        TransportScope["transport scope: HTTP Headers (misal: Authorization, Content-Type)"]
+flowchart LR
+    Client([Client Request]) --> MC[Synapse Message Context]
+    
+    subgraph Inside_MC ["Anatomi di dalam Message Context"]
+        Body["1. Payload / Body (JSON / XML)"]
+        Props["2. Properties (default scope)"]
+        Trp["3. Transport Headers (transport scope)"]
+        Axis2["4. Engine Settings (axis2 scope)"]
     end
-    MC --> DefaultScope
-    MC --> Axis2Scope
-    MC --> TransportScope
+    
+    MC --> M1["<log> Mediator"]
+    M1 --> M2["<payloadFactory> Mediator"]
+    M2 --> M3["<property scope='axis2'>"]
+    M3 --> Resp["<respond/> ke Client"]
 ```
 
-### Penjelasan Scope Variabel:
-| Scope | Fungsi & Penggunaan | Contoh Pengambilan |
-| :--- | :--- | :--- |
-| `default` | Variabel lokal selama pemrosesan pesan di dalam alur Synapse. | `get-property('myVar')` atau `$ctx:myVar` |
-| `axis2` | Properti internal engine Axis2 (HTTP Status Code, timeout). | `get-property('axis2', 'HTTP_SC')` atau `$axis2:HTTP_SC` |
-| `transport` | Header HTTP dari request masuk atau untuk request keluar. | `get-property('transport', 'Authorization')` atau `$trp:Authorization` |
+---
+
+### B. Studi Kasus Nyata: Bedah Interaksi Message Context pada `HelloAPI.xml`
+
+Mari kita lihat bagaimana `HelloAPI.xml` yang kita buat di Modul 1 memanipulasi Message Context:
+
+```xml
+<api xmlns="http://ws.apache.org/ns/synapse" name="HelloAPI" context="/hello">
+    <resource methods="GET" uri-template="/{name}">
+        <inSequence>
+            <!-- 1. Membaca properti URI parameter dari Message Context -->
+            <log level="custom">
+                <property name="INFO" value="Menerima request Hello API"/>
+                <property name="TargetName" expression="get-property('uri.var.name')"/>
+            </log>
+
+            <!-- 2. Mengubah Payload/Body di dalam Message Context menjadi JSON baru -->
+            <payloadFactory media-type="json">
+                <format>
+                    {
+                        "status": "SUCCESS",
+                        "message": "Halo, $1! Selamat datang di WSO2 Micro Integrator.",
+                        "server_time": "$2"
+                    }
+                </format>
+                <args>
+                    <arg evaluator="xml" expression="get-property('uri.var.name')"/>
+                    <arg evaluator="xml" expression="get-property('SYSTEM_DATE', 'yyyy-MM-dd HH:mm:ss')"/>
+                </args>
+            </payloadFactory>
+
+            <!-- 3. Menyimpan HTTP Status Code ke dalam Axis2 Scope di Message Context -->
+            <property name="HTTP_SC" value="200" scope="axis2"/>
+
+            <!-- 4. Mengembalikan seluruh isi Message Context saat ini ke Client -->
+            <respond/>
+        </inSequence>
+    </resource>
+</api>
+```
+
+#### Alur Manipulasi Data:
+1. Saat request `GET /hello/Jovan` masuk, WSO2 otomatis menyimpan nilai `Jovan` ke dalam variabel context berlabel `uri.var.name`.
+2. Mediator `<log>` mengambil nilai `uri.var.name` dari context untuk dicetak di terminal.
+3. Mediator `<payloadFactory>` **menimpa isi Body/Payload** di dalam Message Context dengan format JSON baru menggunakan argumen yang ditarik dari context (`$1` = `uri.var.name` dan `$2` = `SYSTEM_DATE`).
+4. Mediator `<property>` menuliskan `HTTP_SC = 200` pada **scope `axis2`** di Message Context agar transport layer mengirimkan header response `HTTP/1.1 200 OK`.
+5. Mediator `<respond/>` menghentikan alur mediasi dan langsung mengirimkan isi Message Context terkini kembali ke pemanggil.
+
+---
+
+### C. Penjelasan Scopes Variabel di Message Context
+
+Data dan variabel dapat disimpan dan diakses pada tingkatan (*scopes*) yang berbeda:
+
+| Scope | Fungsi & Penggunaan | Cara Mengakses (XPath / Synapse Expression) | Prefix Ringkas |
+| :--- | :--- | :--- | :--- |
+| **`default`** | Variabel lokal selama pemrosesan alur Synapse. Hilang setelah response terkirim. | `get-property('myVar')` | `$ctx:myVar` |
+| **`transport`** | HTTP Headers dari request masuk atau yang akan dikirim keluar (misal `Authorization`). | `get-property('transport', 'Authorization')` | `$trp:Authorization` |
+| **`axis2`** | Properti engine transport tingkat bawah (misal status HTTP `HTTP_SC`, format output `messageType`). | `get-property('axis2', 'HTTP_SC')` | `$axis2:HTTP_SC` |
+| **`axis2-client`** | Konfigurasi koneksi saat memanggil backend eksternal (misal `HTTP_METHOD`, `REST_URL_POSTFIX`). | `get-property('axis2-client', 'HTTP_METHOD')` | - |
+| **`registry`** | Mengambil file / konfigurasi statis dari WSO2 Governance Registry. | `get-property('gov:/conf/myConfig.xml')` | - |
 
 ---
 
