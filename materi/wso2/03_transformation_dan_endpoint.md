@@ -103,73 +103,274 @@ Ketika memanggil SOAP Web Service dan mengembalikan response JSON ke aplikasi mo
 
 ---
 
-## 3. Jenis-Jenis Endpoint di WSO2 MI
+## 3. Jenis-Jenis Endpoint di WSO2 MI: Fungsi, Detail & Kasus Penggunaan
 
-Endpoint merepresentasikan target tujuan tempat request akan dikirimkan.
+Endpoint di WSO2 Micro Integrator merepresentasikan **alamat tujuan logis atau fisik** tempat pesan request akan diteruskan setelah melewati alur mediasi (*InSequence*). 
+
+Endpoint bukan sekadar "alamat URL", melainkan sebuah komponen pintar yang menangani koneksi jaringan, serialisasi protokol, penanganan error, failover otomatis, hingga load balancing.
 
 ```mermaid
 graph TD
     EP["WSO2 Endpoints"]
-    EP --> HTTP["HTTP Endpoint<br/>REST URI Template"]
-    EP --> Address["Address Endpoint<br/>Direct URL / SOAP"]
-    EP --> WSDL["WSDL Endpoint<br/>WSDL-based Contract"]
-    EP --> Failover["Failover Endpoint<br/>Automatic Fallback"]
-    EP --> LoadBalance["Load Balance Endpoint<br/>Traffic Distribution"]
-```
-
-### 1. HTTP Endpoint (RESTful Services)
-Mendukung REST URL templating dinamis (`{uri.var.param}`).
-```xml
-<endpoint name="InventoryServiceEP">
-    <http method="get" uri-template="https://inventory.company.internal/api/v1/items/{uri.var.itemId}">
-        <timeout>
-            <duration>5000</duration>
-            <responseAction>fault</responseAction>
-        </timeout>
-    </http>
-</endpoint>
+    EP --> HTTP["1. HTTP Endpoint<br/>REST URI Template Dinamis"]
+    EP --> Address["2. Address Endpoint<br/>Direct URL, SOAP 1.1/1.2 & MTOM"]
+    EP --> WSDL["3. WSDL Endpoint<br/>Contract-First Enterprise WSDL"]
+    EP --> Failover["4. Failover Endpoint<br/>High Availability Active-Passive"]
+    EP --> LoadBalance["5. Load Balance Endpoint<br/>Trafik Terdistribusi Active-Active"]
+    EP --> Default["6. Default Endpoint<br/>Dynamic Routing via 'To' Header"]
 ```
 
 ---
 
-### 2. Failover Endpoint (High Availability)
-Jika Primary Endpoint mengalami kegagalan/timeout, WSO2 otomatis mengalihkan request ke Secondary Endpoint.
+### 1. HTTP Endpoint (`<http>`)
 
+#### A. Fungsi Utama
+Digunakan untuk berkomunikasi dengan **RESTful Web Services** modern yang menggunakan metode HTTP standar (`GET`, `POST`, `PUT`, `DELETE`, `PATCH`) dan membutuhkan manipulasi URL path dinamis menggunakan parameter.
+
+#### B. Detail Cara Kerja & Atribut Penting
+- **`method`**: Menentukan HTTP verb secara eksplisit (`get`, `post`, `put`, `delete`, `patch`). Jika diabaikan, WSO2 akan menggunakan method yang sama dengan request awal client.
+- **`uri-template`**: Fitur terkuat dari HTTP Endpoint. Anda dapat menyisipkan variabel Synapse secara dinamis menggunakan sintaks `{uri.var.nama_variabel}`:
+  - Variabel ini diset sebelumnya di sequence menggunakan `<property name="uri.var.itemId" value="105"/>`.
+  - Mendukung juga ekspresi query parameter: `https://api.example.com/search{?q,category,page}`.
+
+#### C. Contoh Konfigurasi Lengkap:
 ```xml
-<endpoint name="PaymentFailoverEP">
+<endpoint name="ProductCatalogServiceEP">
+    <http method="get" uri-template="https://catalog.company.internal/api/v2/categories/{uri.var.catId}/products/{uri.var.prdId}">
+        <timeout>
+            <duration>5000</duration> <!-- Timeout 5 detik -->
+            <responseAction>fault</responseAction>
+        </timeout>
+        <suspendOnFailure>
+            <initialDuration>10000</initialDuration>
+            <progressionFactor>2.0</progressionFactor>
+            <maximumDuration>60000</maximumDuration>
+        </suspendOnFailure>
+    </http>
+</endpoint>
+```
+
+#### D. Kasus Penggunaan Riil:
+- Memanggil layanan Microservices berbasis Spring Boot / Node.js / Go / Ballerina yang mengadopsi standar REST JSON.
+- Integrasi dengan Public REST SaaS (misal: Stripe Payment, Twilio SMS, Midtrans Gateway).
+
+---
+
+### 2. Address Endpoint (`<address>`)
+
+#### A. Fungsi Utama
+Digunakan untuk mengirimkan pesan ke **URL statis langsung (*Direct URL*)**, sangat ideal untuk integrasi dengan layanan **SOAP Web Services (SOAP 1.1 dan SOAP 1.2)**, WS-Addressing, Plain Old XML (POX), atau pesan biner dengan lampiran dokumen.
+
+#### B. Detail Cara Kerja & Atribut Penting
+- **`uri`**: Alamat URL lengkap dan statis menuju server backend (misal: `http://corebank.internal:8280/services/AccountSOAPService`).
+- **`format`**: Memaksa serialisasi format pesan keluar tanpa bergantung pada format awal:
+  - `soap11`: Otomatis membungkus pesan sebagai SOAP 1.1 Envelope (`text/xml`).
+  - `soap12`: Otomatis membungkus pesan sebagai SOAP 1.2 Envelope (`application/soap+xml`).
+  - `pox`: Mengirimkan pesan sebagai XML murni tanpa wrapper SOAP envelope.
+  - `rest`: Mengirimkan format REST (JSON/XML).
+- **`optimize`**: Mengaktifkan optimasi transmisi file atau data biner besar:
+  - `mtom` (*Message Transmission Optimization Mechanism*): Memisahkan data biner (Base64) dari payload XML utama dan mengirimkannya sebagai multipart biner terkompresi sehingga transfer file berukuran megabyte hingga gigabyte menjadi sangat cepat dan hemat RAM.
+  - `swa` (*SOAP with Attachments*): Standar MIME lampiran dokumen pada SOAP.
+
+#### C. Contoh Konfigurasi Lengkap:
+```xml
+<endpoint name="CoreBankingSOAPEP">
+    <address uri="http://corebanking.bank.internal:8080/services/AccountInquiryService"
+             format="soap11"
+             optimize="mtom">
+        <enableAddressing version="final"/>
+        <timeout>
+            <duration>10000</duration>
+            <responseAction>fault</responseAction>
+        </timeout>
+    </address>
+</endpoint>
+```
+
+#### D. Kasus Penggunaan Riil:
+- Menghubungi sistem perbankan lama (*Legacy Core Banking*) yang mewajibkan protokol SOAP 1.1.
+- Mengirim dokumen invoice PDF atau gambar KTP terenkripsi ke server verifikasi backend menggunakan MTOM.
+
+---
+
+### 3. WSDL Endpoint (`<wsdl>`)
+
+#### A. Fungsi Utama
+Digunakan untuk memanggil layanan SOAP dengan **membaca dan mematuhi definisi kontrak WSDL (*Web Services Description Language*)** secara langsung.
+
+#### B. Detail Cara Kerja & Atribut Penting
+- **`uri`**: Lokasi file WSDL backend (bisa berupa URL HTTP `http://.../service?wsdl` atau path file lokal di registry).
+- **`service`**: Nama service spesifik di dalam dokumen WSDL yang ingin ditargetkan.
+- **`port`**: Nama port / binding spesifik yang dipilih (misal: port SOAP 1.1 atau port SOAP 1.2).
+- **Validasi Kontrak Otomatis**: WSO2 MI secara otomatis memverifikasi bahwa struktur namespace, nama elemen XML, dan parameter telah sesuai 100% dengan skema XSD yang tercantum di dalam WSDL.
+
+#### C. Contoh Konfigurasi Lengkap:
+```xml
+<endpoint name="SAPCustomerWSDLEP">
+    <wsdl uri="http://sap-gateway.internal:8000/sap/bc/srt/wsdl/srvc_customer.wsdl"
+          service="CustomerManagementService"
+          port="CustomerManagementSoapPort11">
+        <timeout>
+            <duration>15000</duration>
+            <responseAction>fault</responseAction>
+        </timeout>
+    </wsdl>
+</endpoint>
+```
+
+#### D. Kasus Penggunaan Riil:
+- Integrasi enterprise skala besar dengan sistem ERP seperti **SAP**, **Oracle Financials**, atau **SWIFT / BI-FAST** yang memiliki tata kelola kontrak WSDL yang sangat ketat dan tidak boleh melenceng satu elemen pun.
+
+---
+
+### 4. Failover Endpoint (`<failover>`)
+
+#### A. Fungsi Utama
+Menjamin **Ketersediaan Tinggi (*High Availability / Fault Tolerance*)** dengan arsitektur **Active-Passive**. Jika server utama (*Primary Server*) tumbang, request secara instan dialihkan ke server cadangan (*Secondary / Disaster Recovery Server*).
+
+#### B. Detail Cara Kerja & Keunggulan
+```mermaid
+sequenceDiagram
+    autonumber
+    actor WSO2 as "WSO2 Mediation Flow"
+    participant Pri as "Primary Server (DC Utama)"
+    participant Sec as "Secondary Server (DC Cadangan)"
+
+    WSO2->>Pri: 1. Kirim Request ke Primary
+    Note over Pri: Primary Timeout / Jaringan Putus (Error)
+    Pri--xWSO2: Koneksi Gagal (Timeout / Connection Refused)
+    Note over WSO2: Failover Terpicu Otomatis!<br/>Tandai Primary 'Suspended'
+    WSO2->>Sec: 2. Alihkan Request Sama ke Secondary
+    Sec-->>WSO2: 200 OK (Berhasil)
+    Note over WSO2: Response Diteruskan ke Client Tanpa Error!
+```
+
+- **Transparan bagi Client**: Client tidak pernah tahu bahwa server utama mati karena request langsung diselamatkan oleh server cadangan tanpa mengembalikan error 500 ke client.
+- **Multi-Level Fallback**: Dapat menampung lebih dari dua endpoint (Primary $\rightarrow$ Secondary $\rightarrow$ Tertiary).
+- **Mekanisme Pemulihan (*Self-Healing*)**: Ketika durasi suspend Primary telah habis, WSO2 akan mencoba mengirimkan satu request uji coba (*probe*). Jika sukses, Primary akan otomatis kembali menjadi target utama.
+
+#### C. Contoh Konfigurasi Lengkap:
+```xml
+<endpoint name="PaymentGatewayFailoverEP">
     <failover>
-        <!-- Primary Server -->
-        <endpoint>
-            <http method="post" uri-template="https://primary-payment.internal/process"/>
+        <!-- Primary Server: Data Center Utama (Jakarta) -->
+        <endpoint name="PaymentDC1">
+            <http method="post" uri-template="https://dc1-payment.internal/api/charge">
+                <timeout>
+                    <duration>3000</duration>
+                    <responseAction>fault</responseAction>
+                </timeout>
+                <suspendOnFailure>
+                    <initialDuration>30000</initialDuration> <!-- Suspend 30 detik -->
+                </suspendOnFailure>
+            </http>
         </endpoint>
-        <!-- Secondary / Backup Server -->
-        <endpoint>
-            <http method="post" uri-template="https://backup-payment.internal/process"/>
+
+        <!-- Secondary Server: Disaster Recovery Center (Surabaya) -->
+        <endpoint name="PaymentDRC">
+            <http method="post" uri-template="https://drc-payment.internal/api/charge">
+                <timeout>
+                    <duration>5000</duration>
+                    <responseAction>fault</responseAction>
+                </timeout>
+            </http>
         </endpoint>
     </failover>
 </endpoint>
 ```
 
+#### D. Kasus Penggunaan Riil:
+- Sistem pembayaran perbankan, otorisasi kartu kredit, dan transaksi e-commerce mission-critical yang tidak boleh mengalami *downtime* sedetik pun.
+
 ---
 
-### 3. Load Balance Endpoint
-Mendistribusikan beban trafik ke beberapa backend instance.
+### 5. Load Balance Endpoint (`<loadbalance>`)
 
+#### A. Fungsi Utama
+Mendistribusikan beban volume trafik request ke beberapa backend instance secara bersamaan menggunakan arsitektur **Active-Active** untuk mencapai skalabilitas horisontal yang tinggi.
+
+#### B. Detail Cara Kerja & Fitur Kunci
+- **Algoritma Distribusi**:
+  - `RoundRobin`: Membagi request secara merata bergiliran (Server 1 $\rightarrow$ Server 2 $\rightarrow$ Server 3 $\rightarrow$ Server 1 ...).
+  - `WeightedRoundRobin`: Membagi porsi beban berdasarkan kapasitas spesifikasi mesin (misal: Server A kapasitas besar menerima 70% trafik, Server B menerima 30%).
+- **Deteksi Node Sehat (*Health-Aware*)**:
+  - Jika salah satu node backend mengalami crash atau suspend, Load Balancer WSO2 otomatis mencoret node tersebut dari daftar putaran distribusi sehingga request tidak akan dikirim ke node yang sedang mati.
+- **Session Affinity / Sticky Session**:
+  - Untuk aplikasi stateful, WSO2 dapat mengikat (*stick*) pengguna tertentu ke server yang sama menggunakan HTTP Cookie atau Transport Header.
+
+#### C. Contoh Konfigurasi Lengkap:
 ```xml
-<endpoint name="WorkerLoadBalanceEP">
+<endpoint name="EcommerceWorkerLoadBalanceEP">
     <loadbalance algorithm="org.apache.synapse.endpoints.algorithms.RoundRobin">
+        <!-- Node Backend Worker 1 -->
         <endpoint>
-            <http method="post" uri-template="https://node-1.internal/task"/>
+            <http method="post" uri-template="http://worker-node-1.internal:8080/order/process">
+                <timeout>
+                    <duration>4000</duration>
+                    <responseAction>fault</responseAction>
+                </timeout>
+            </http>
         </endpoint>
+
+        <!-- Node Backend Worker 2 -->
         <endpoint>
-            <http method="post" uri-template="https://node-2.internal/task"/>
+            <http method="post" uri-template="http://worker-node-2.internal:8080/order/process">
+                <timeout>
+                    <duration>4000</duration>
+                    <responseAction>fault</responseAction>
+                </timeout>
+            </http>
         </endpoint>
+
+        <!-- Node Backend Worker 3 -->
         <endpoint>
-            <http method="post" uri-template="https://node-3.internal/task"/>
+            <http method="post" uri-template="http://worker-node-3.internal:8080/order/process">
+                <timeout>
+                    <duration>4000</duration>
+                    <responseAction>fault</responseAction>
+                </timeout>
+            </http>
         </endpoint>
     </loadbalance>
 </endpoint>
 ```
+
+#### D. Kasus Penggunaan Riil:
+- Event promosi Flash Sale e-commerce atau pendaftaran online serentak di mana ribuan request masuk per detik dan harus dibagi rata ke cluster aplikasi.
+
+---
+
+### 6. Default Endpoint (`<default>`)
+
+#### A. Fungsi Utama
+Digunakan ketika alamat tujuan **tidak ditentukan secara statis di dalam file endpoint**, melainkan **ditetapkan secara dinamis pada saat pesan sedang mengalir (*Runtime Dynamic Routing*)**.
+
+#### B. Cara Kerja
+WSO2 MI akan mengambil alamat URL dari header konteks pesan, yaitu properti `To` (WS-Addressing Header) atau transport header `To`:
+
+```xml
+<!-- 1. Tentukan alamat URL backend secara dinamis berdasarkan kalkulasi bisnis -->
+<property name="To" value="https://partner-a.com/api/v1/notify" scope="default"/>
+
+<!-- 2. Kirim menggunakan Default Endpoint -->
+<call>
+    <endpoint>
+        <default/>
+    </endpoint>
+</call>
+```
+
+---
+
+### 7. Matriks Perbandingan Komprehensif Antar Endpoint
+
+| Karakteristik | HTTP Endpoint | Address Endpoint | WSDL Endpoint | Failover Endpoint | Load Balance Endpoint |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Protokol Utama** | REST (JSON / XML) | SOAP 1.1 / 1.2 / POX | SOAP WSDL Contract | Multi-Protokol | Multi-Protokol |
+| **Format URL** | URI Template Dinamis (`{uri.var}`) | URL Statis Langsung | URL Berkas `.wsdl` | Koleksi Banyak Endpoint | Koleksi Banyak Endpoint |
+| **Arsitektur Sistem** | Single Backend | Single Backend | Single Backend | **Active-Passive** (High Availability) | **Active-Active** (Skalabilitas Beban) |
+| **Fitur Khusus** | URL Templating & Query Params | Format forcing & MTOM binary | Validasi XSD Schema otomatis | Otomatis switch jika server utama crash | Round Robin & Sticky Session |
+| **Rekomendasi Kasus** | Microservices modern & REST API eksternal | Core banking SOAP & transfer berkas besar | Sistem perbankan ERP (SAP / SWIFT) | Transaksi pembayaran kritis anti-downtime | Aplikasi e-commerce bertrafik tinggi |
 
 ---
 
