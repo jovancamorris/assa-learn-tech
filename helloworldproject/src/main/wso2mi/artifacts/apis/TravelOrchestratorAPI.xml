@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<api xmlns="http://ws.apache.org/ns/synapse" name="TravelOrchestratorAPI" context="/travel">
+    <resource methods="POST" uri-template="/book">
+        <inSequence>
+            <!-- ============================================================ -->
+            <!-- 1. LOGGING & PENYIMPANAN PAYLOAD AWAL (REQUEST ASLI CLIENT)   -->
+            <!-- ============================================================ -->
+            <log level="custom">
+                <property name="STEP" value="1. Menerima Permintaan Paket Booking Perjalanan"/>
+            </log>
+
+            <property name="bookingUser" expression="json-eval($.customer_name)" scope="default"/>
+            <property name="destCity" expression="json-eval($.destination)" scope="default"/>
+
+            <!-- Validasi Input Dasar -->
+            <filter xpath="boolean(get-property('destCity')) = false">
+                <then>
+                    <property name="HTTP_SC" value="400" scope="axis2"/>
+                    <payloadFactory media-type="json">
+                        <format>
+                            {
+                                "status": "BAD_REQUEST",
+                                "message": "Kota tujuan (destination) wajib diisi."
+                            }
+                        </format>
+                        <args/>
+                    </payloadFactory>
+                    <respond/>
+                </then>
+                <else/>
+            </filter>
+
+            <!-- ============================================================ -->
+            <!-- 2. POLA 1: SEQUENTIAL SERVICE CHAINING (LANGKAH 1: AUTH)     -->
+            <!-- ============================================================ -->
+            <!-- Memanggil Service Auth untuk mendapatkan Access Token        -->
+            <payloadFactory media-type="json">
+                <format>
+                    {
+                        "service": "TravelBookingGateway",
+                        "secret": "TRAVEL-SECRET-KEY"
+                    }
+                </format>
+                <args/>
+            </payloadFactory>
+
+            <!-- Simulasi Pemanggilan Service Auth (Dalam real: <call><endpoint/></call>) -->
+            <property name="authToken" value="BEARER-TOKEN-XYZ-998877" scope="default"/>
+            <log level="custom">
+                <property name="STEP" value="2. Auth Berhasil Didapatkan"/>
+                <property name="AuthToken" expression="get-property('authToken')"/>
+            </log>
+
+            <!-- ============================================================ -->
+            <!-- 3. POLA 2: SCATTER-GATHER (PARALLEL DISPATCH FLIGHT & HOTEL) -->
+            <!-- ============================================================ -->
+            <!-- Simulasi pengumpulan response dari Flight dan Hotel          -->
+            <!-- WSO2 menggabungkan keduanya menjadi satu respon utuh         -->
+            <payloadFactory media-type="json">
+                <format>
+                    {
+                        "status": "SUCCESS",
+                        "booking_id": "$1",
+                        "customer": "$2",
+                        "destination": "$3",
+                        "orchestration": {
+                            "pattern": "Scatter-Gather & Sequential Chaining",
+                            "flight_service": {
+                                "status": "CONFIRMED",
+                                "airline": "Garuda Indonesia",
+                                "flight_number": "GA-402",
+                                "price": 1850000
+                            },
+                            "hotel_service": {
+                                "status": "CONFIRMED",
+                                "hotel_name": "Grand Hyatt Resort",
+                                "room_type": "Deluxe Ocean View",
+                                "price": 2400000
+                            }
+                        },
+                        "pricing": {
+                            "total_cost": 4250000,
+                            "currency": "IDR"
+                        },
+                        "processed_at": "$4"
+                    }
+                </format>
+                <args>
+                    <arg evaluator="xml" expression="fn:concat('TRV-', get-property('SYSTEM_DATE', 'yyyyMMddHHmmss'))"/>
+                    <arg evaluator="xml" expression="get-property('bookingUser')"/>
+                    <arg evaluator="xml" expression="get-property('destCity')"/>
+                    <arg evaluator="xml" expression="get-property('SYSTEM_DATE', 'yyyy-MM-dd HH:mm:ss')"/>
+                </args>
+            </payloadFactory>
+
+            <!-- ============================================================ -->
+            <!-- 4. KEMBALIKAN RESPON GABUNGAN KE CLIENT                      -->
+            <!-- ============================================================ -->
+            <property name="HTTP_SC" value="200" scope="axis2"/>
+            <property name="messageType" value="application/json" scope="axis2"/>
+            <respond/>
+        </inSequence>
+
+        <!-- ============================================================ -->
+        <!-- 5. GLOBAL FAULT SEQUENCE & ERROR HANDLING                    -->
+        <!-- ============================================================ -->
+        <faultSequence>
+            <log level="custom">
+                <property name="STATUS" value="ERROR_TRIGGERED"/>
+                <property name="ERROR_CODE" expression="get-property('ERROR_CODE')"/>
+                <property name="ERROR_MESSAGE" expression="get-property('ERROR_MESSAGE')"/>
+            </log>
+
+            <!-- Mapping Kode Error Synapse ke HTTP Status Code -->
+            <switch source="get-property('ERROR_CODE')">
+                <case regex="101504|101505">
+                    <property name="HTTP_SC" value="504" scope="axis2"/>
+                    <property name="errDesc" value="Gateway Timeout: Salah satu backend reservasi tidak merespon tepat waktu."/>
+                </case>
+                <case regex="101500|101501">
+                    <property name="HTTP_SC" value="503" scope="axis2"/>
+                    <property name="errDesc" value="Service Unavailable: Layanan reservasi sedang offline."/>
+                </case>
+                <default>
+                    <property name="HTTP_SC" value="500" scope="axis2"/>
+                    <property name="errDesc" value="Internal Server Error: Terjadi kegagalan orkestrasi internal."/>
+                </default>
+            </switch>
+
+            <payloadFactory media-type="json">
+                <format>
+                    {
+                        "status": "FAILED",
+                        "error_code": "$1",
+                        "message": "$2",
+                        "timestamp": "$3"
+                    }
+                </format>
+                <args>
+                    <arg evaluator="xml" expression="get-property('ERROR_CODE')"/>
+                    <arg evaluator="xml" expression="get-property('errDesc')"/>
+                    <arg evaluator="xml" expression="get-property('SYSTEM_DATE', 'yyyy-MM-dd HH:mm:ss')"/>
+                </args>
+            </payloadFactory>
+            <property name="messageType" value="application/json" scope="axis2"/>
+            <respond/>
+        </faultSequence>
+    </resource>
+</api>
