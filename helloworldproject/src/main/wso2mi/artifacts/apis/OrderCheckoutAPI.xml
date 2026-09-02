@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<api xmlns="http://ws.apache.org/ns/synapse" name="OrderCheckoutAPI" context="/order">
+    <resource methods="POST" uri-template="/checkout">
+        <inSequence>
+            <!-- ============================================================ -->
+            <!-- 1. LOGGING & PENYIMPANAN DATA DARI TRANSPORT SCOPE (HEADERS)  -->
+            <!-- ============================================================ -->
+            <property name="authHeader" expression="get-property('transport', 'Authorization')" scope="default"/>
+            <property name="channelId" expression="get-property('transport', 'Channel-ID')" scope="default"/>
+
+            <log level="custom">
+                <property name="STEP" value="1. Menerima Request Order Checkout"/>
+                <property name="Channel-ID" expression="get-property('channelId')"/>
+            </log>
+
+            <!-- ============================================================ -->
+            <!-- 2. FILTER VALIDASI KEAMANAN (AUTENTIKASI HEADER)             -->
+            <!-- ============================================================ -->
+            <filter source="get-property('authHeader')" regex="Bearer SECRET123">
+                <then>
+                    <log level="custom">
+                        <property name="AUTH" value="Autentikasi Berhasil"/>
+                    </log>
+                </then>
+                <else>
+                    <!-- Return 401 Unauthorized jika token salah/kosong -->
+                    <property name="HTTP_SC" value="401" scope="axis2"/>
+                    <payloadFactory media-type="json">
+                        <format>
+                            {
+                                "status": "UNAUTHORIZED",
+                                "message": "Token otentikasi tidak valid atau header Authorization tidak ditemukan."
+                            }
+                        </format>
+                        <args/>
+                    </payloadFactory>
+                    <respond/>
+                </else>
+            </filter>
+
+            <!-- ============================================================ -->
+            <!-- 3. EKSTRAKSI PAYLOAD JSON REQUEST KE DEFAULT PROPERTIES      -->
+            <!-- ============================================================ -->
+            <property name="orderId" expression="json-eval($.order_id)" type="STRING"/>
+            <property name="customerId" expression="json-eval($.customer_id)" type="STRING"/>
+            <property name="membership" expression="json-eval($.membership)" type="STRING"/>
+            <property name="itemName" expression="json-eval($.item)" type="STRING"/>
+            <property name="itemPrice" expression="json-eval($.price)" type="DOUBLE"/>
+            <property name="itemQty" expression="json-eval($.quantity)" type="INTEGER"/>
+            <property name="paymentMethod" expression="json-eval($.payment_method)" type="STRING"/>
+
+            <!-- ============================================================ -->
+            <!-- 4. FILTER VALIDASI INPUT BISNIS (PRICE & QUANTITY)           -->
+            <!-- ============================================================ -->
+            <filter xpath="get-property('itemPrice') &lt;= 0 or get-property('itemQty') &lt;= 0">
+                <then>
+                    <property name="HTTP_SC" value="400" scope="axis2"/>
+                    <payloadFactory media-type="json">
+                        <format>
+                            {
+                                "status": "BAD_REQUEST",
+                                "message": "Harga (price) dan jumlah (quantity) harus lebih besar dari 0."
+                            }
+                        </format>
+                        <args/>
+                    </payloadFactory>
+                    <respond/>
+                </then>
+                <else/>
+            </filter>
+
+            <!-- ============================================================ -->
+            <!-- 5. SWITCH MEDIATOR 1: PENENTUAN DISKON BERDASARKAN MEMBERSHIP -->
+            <!-- ============================================================ -->
+            <switch source="get-property('membership')">
+                <case regex="VIP">
+                    <property name="discountRate" value="15%" scope="default"/>
+                    <property name="tierName" value="VIP Priority Customer" scope="default"/>
+                </case>
+                <case regex="GOLD">
+                    <property name="discountRate" value="10%" scope="default"/>
+                    <property name="tierName" value="Gold Member" scope="default"/>
+                </case>
+                <default>
+                    <property name="discountRate" value="0%" scope="default"/>
+                    <property name="tierName" value="Regular Member" scope="default"/>
+                </default>
+            </switch>
+
+            <!-- ============================================================ -->
+            <!-- 6. SWITCH MEDIATOR 2: PENENTUAN BIAYA ADMIN PEMBAYARAN        -->
+            <!-- ============================================================ -->
+            <switch source="get-property('paymentMethod')">
+                <case regex="BANK_TRANSFER">
+                    <property name="adminFee" value="4000" scope="default" type="INTEGER"/>
+                </case>
+                <case regex="E_WALLET">
+                    <property name="adminFee" value="1500" scope="default" type="INTEGER"/>
+                </case>
+                <case regex="CREDIT_CARD">
+                    <property name="adminFee" value="25000" scope="default" type="INTEGER"/>
+                </case>
+                <default>
+                    <property name="adminFee" value="0" scope="default" type="INTEGER"/>
+                </default>
+            </switch>
+
+            <!-- ============================================================ -->
+            <!-- 7. HEADER MEDIATOR: MENAMBAHKAN CUSTOM TRACE HEADER          -->
+            <!-- ============================================================ -->
+            <header name="X-Trace-ID" expression="fn:concat('TRX-', get-property('orderId'))" scope="transport"/>
+
+            <!-- ============================================================ -->
+            <!-- 8. PAYLOADFACTORY: MENYUSUN JSON RESPONSE LENGKAP             -->
+            <!-- ============================================================ -->
+            <payloadFactory media-type="json">
+                <format>
+                    {
+                        "status": "SUCCESS",
+                        "data": {
+                            "order_id": "$1",
+                            "customer_id": "$2",
+                            "tier": "$3",
+                            "item_name": "$4",
+                            "unit_price": $5,
+                            "quantity": $6,
+                            "discount": "$7",
+                            "payment": {
+                                "method": "$8",
+                                "admin_fee": $9
+                            },
+                            "channel": "$10",
+                            "processed_at": "$11"
+                        }
+                    }
+                </format>
+                <args>
+                    <arg evaluator="xml" expression="get-property('orderId')"/>
+                    <arg evaluator="xml" expression="get-property('customerId')"/>
+                    <arg evaluator="xml" expression="get-property('tierName')"/>
+                    <arg evaluator="xml" expression="get-property('itemName')"/>
+                    <arg evaluator="xml" expression="get-property('itemPrice')"/>
+                    <arg evaluator="xml" expression="get-property('itemQty')"/>
+                    <arg evaluator="xml" expression="get-property('discountRate')"/>
+                    <arg evaluator="xml" expression="get-property('paymentMethod')"/>
+                    <arg evaluator="xml" expression="get-property('adminFee')"/>
+                    <arg evaluator="xml" expression="get-property('channelId')"/>
+                    <arg evaluator="xml" expression="get-property('SYSTEM_DATE', 'yyyy-MM-dd HH:mm:ss')"/>
+                </args>
+            </payloadFactory>
+
+            <!-- ============================================================ -->
+            <!-- 9. SET HTTP STATUS 200 OK & RESPOND KE CLIENT                -->
+            <!-- ============================================================ -->
+            <property name="HTTP_SC" value="200" scope="axis2"/>
+            <respond/>
+        </inSequence>
+
+        <!-- ============================================================ -->
+        <!-- FAULT SEQUENCE: PENANGANAN JIKA TERJADI ERROR SISTEM          -->
+        <!-- ============================================================ -->
+        <faultSequence>
+            <log level="custom">
+                <property name="ERROR" value="Terjadi exception pada alur OrderCheckoutAPI"/>
+                <property name="CODE" expression="get-property('ERROR_CODE')"/>
+                <property name="MESSAGE" expression="get-property('ERROR_MESSAGE')"/>
+            </log>
+            <property name="HTTP_SC" value="500" scope="axis2"/>
+            <payloadFactory media-type="json">
+                <format>
+                    {
+                        "status": "INTERNAL_SERVER_ERROR",
+                        "error_code": "$1",
+                        "error_message": "$2"
+                    }
+                </format>
+                <args>
+                    <arg evaluator="xml" expression="get-property('ERROR_CODE')"/>
+                    <arg evaluator="xml" expression="get-property('ERROR_MESSAGE')"/>
+                </args>
+            </payloadFactory>
+            <respond/>
+        </faultSequence>
+    </resource>
+</api>

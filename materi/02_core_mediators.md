@@ -238,26 +238,113 @@ Mirip struktur `switch-case` dalam bahasa pemrograman.
 
 ---
 
-## 3. Hands-on: Menggabungkan Core Mediators
+## 3. Hands-on Komprehensif: Order & Payment Processing API (`/order/checkout`)
 
-Berikut contoh API `/order/process` yang memvalidasi input, melakukan pengkondisian, dan merespon dengan payload terstruktur:
+Pada bagian ini, kita akan membangun sebuah REST API bisnis nyata bernama **`OrderCheckoutAPI`** yang mengintegrasikan **seluruh materi di Modul 2**:
+1. **Message Context Scopes**: `transport` (baca & inject HTTP headers), `default` (variabel lokal JSON/XPath), dan `axis2` (HTTP status code).
+2. **Mediators Terlibat**:
+   - `<log>`: Mencatat jejak audit pemrosesan request.
+   - `<property>`: Ekstraksi data bertipe `DOUBLE`, `INTEGER`, `STRING` serta penanganan scope.
+   - `<filter>`: Validasi keamanan (Bearer Token) & validasi bisnis (nilai harga/jumlah > 0).
+   - `<switch>`: Penentuan diskon tier membership & perhitungan biaya admin metode pembayaran.
+   - `<header>`: Injeksi custom tracing header (`X-Trace-ID`) ke HTTP response.
+   - `<payloadFactory>`: Pembuatan JSON response terstruktur dinamis.
+   - `<respond>`: Pengembalian response langsung ke client.
+   - `<faultSequence>`: Penanganan error sistem tak terduga (*internal server error*).
+
+```mermaid
+flowchart TD
+    Start([POST /order/checkout]) --> H1[1. Ekstrak Header Transport: Auth & Channel-ID]
+    H1 --> F1{2. Filter: Token Valid?}
+    F1 -- Tidak Valid --> R401["Set HTTP_SC 401 & Respond UNAUTHORIZED"]
+    F1 -- Valid --> P1[3. Ekstrak Body JSON: item, price, qty, membership, payment]
+    P1 --> F2{"4. Filter: price > 0 & qty > 0?"}
+    F2 -- Salah --> R400["Set HTTP_SC 400 & Respond BAD_REQUEST"]
+    F2 -- Benar --> S1["5. Switch Membership: Hitung Diskon (VIP: 15%, GOLD: 10%, Regular: 0%)"]
+    S1 --> S2["6. Switch Payment: Hitung Admin Fee (Bank: 4rb, E-Wallet: 1.5rb, CC: 25rb)"]
+    S2 --> H2["7. Header: Tambah X-Trace-ID"]
+    H2 --> PF["8. PayloadFactory: Susun JSON Response Ringkasan"]
+    PF --> R200["9. Set HTTP_SC 200 & Respond ke Client"]
+```
+
+---
+
+## 4. Panduan Pengerjaan Step-by-Step
+
+Ikuti langkah-langkah di bawah ini untuk mengimplementasikan dan menguji project di Antigravity IDE:
+
+### Langkah 1: Buat File Artefak API
+Di Antigravity Explorer, buat file baru bernama `OrderCheckoutAPI.xml` di folder:
+`HelloWorldProject/src/main/wso2mi/artifacts/apis/OrderCheckoutAPI.xml`
+
+### Langkah 2: Salin Kode Konfigurasi Synapse XML Lengkap
+Masukkan seluruh kode konfigurasi berikut ke dalam file `OrderCheckoutAPI.xml`:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
-<api xmlns="http://ws.apache.org/ns/synapse" name="OrderProcessAPI" context="/order">
-    <resource methods="POST" uri-template="/process">
+<api xmlns="http://ws.apache.org/ns/synapse" name="OrderCheckoutAPI" context="/order">
+    <resource methods="POST" uri-template="/checkout">
         <inSequence>
-            <!-- 1. Ekstrak data JSON request -->
+            <!-- ============================================================ -->
+            <!-- 1. LOGGING & PENYIMPANAN DATA DARI TRANSPORT SCOPE (HEADERS)  -->
+            <!-- ============================================================ -->
+            <property name="authHeader" expression="get-property('transport', 'Authorization')" scope="default"/>
+            <property name="channelId" expression="get-property('transport', 'Channel-ID')" scope="default"/>
+
+            <log level="custom">
+                <property name="STEP" value="1. Menerima Request Order Checkout"/>
+                <property name="Channel-ID" expression="get-property('channelId')"/>
+            </log>
+
+            <!-- ============================================================ -->
+            <!-- 2. FILTER VALIDASI KEAMANAN (AUTENTIKASI HEADER)             -->
+            <!-- ============================================================ -->
+            <filter source="get-property('authHeader')" regex="Bearer SECRET123">
+                <then>
+                    <log level="custom">
+                        <property name="AUTH" value="Autentikasi Berhasil"/>
+                    </log>
+                </then>
+                <else>
+                    <!-- Return 401 Unauthorized jika token salah/kosong -->
+                    <property name="HTTP_SC" value="401" scope="axis2"/>
+                    <payloadFactory media-type="json">
+                        <format>
+                            {
+                                "status": "UNAUTHORIZED",
+                                "message": "Token otentikasi tidak valid atau header Authorization tidak ditemukan."
+                            }
+                        </format>
+                        <args/>
+                    </payloadFactory>
+                    <respond/>
+                </else>
+            </filter>
+
+            <!-- ============================================================ -->
+            <!-- 3. EKSTRAKSI PAYLOAD JSON REQUEST KE DEFAULT PROPERTIES      -->
+            <!-- ============================================================ -->
+            <property name="orderId" expression="json-eval($.order_id)" type="STRING"/>
+            <property name="customerId" expression="json-eval($.customer_id)" type="STRING"/>
+            <property name="membership" expression="json-eval($.membership)" type="STRING"/>
+            <property name="itemName" expression="json-eval($.item)" type="STRING"/>
             <property name="itemPrice" expression="json-eval($.price)" type="DOUBLE"/>
             <property name="itemQty" expression="json-eval($.quantity)" type="INTEGER"/>
-            <property name="voucherCode" expression="json-eval($.voucher)"/>
+            <property name="paymentMethod" expression="json-eval($.payment_method)" type="STRING"/>
 
-            <!-- 2. Validasi input -->
-            <filter xpath="get-property('itemQty') <= 0 or get-property('itemPrice') <= 0">
+            <!-- ============================================================ -->
+            <!-- 4. FILTER VALIDASI INPUT BISNIS (PRICE & QUANTITY)           -->
+            <!-- ============================================================ -->
+            <filter xpath="get-property('itemPrice') &lt;= 0 or get-property('itemQty') &lt;= 0">
                 <then>
                     <property name="HTTP_SC" value="400" scope="axis2"/>
                     <payloadFactory media-type="json">
-                        <format>{"status": "FAIL", "message": "Quantity dan Price harus lebih besar dari 0"}</format>
+                        <format>
+                            {
+                                "status": "BAD_REQUEST",
+                                "message": "Harga (price) dan jumlah (quantity) harus lebih besar dari 0."
+                            }
+                        </format>
                         <args/>
                     </payloadFactory>
                     <respond/>
@@ -265,52 +352,214 @@ Berikut contoh API `/order/process` yang memvalidasi input, melakukan pengkondis
                 <else/>
             </filter>
 
-            <!-- 3. Hitung Diskon Berdasarkan Switch Case -->
-            <switch source="get-property('voucherCode')">
-                <case regex="DISKON50">
-                    <property name="discountPercent" value="50"/>
+            <!-- ============================================================ -->
+            <!-- 5. SWITCH MEDIATOR 1: PENENTUAN DISKON BERDASARKAN MEMBERSHIP -->
+            <!-- ============================================================ -->
+            <switch source="get-property('membership')">
+                <case regex="VIP">
+                    <property name="discountRate" value="15%" scope="default"/>
+                    <property name="tierName" value="VIP Priority Customer" scope="default"/>
                 </case>
-                <case regex="DISKON10">
-                    <property name="discountPercent" value="10"/>
+                <case regex="GOLD">
+                    <property name="discountRate" value="10%" scope="default"/>
+                    <property name="tierName" value="Gold Member" scope="default"/>
                 </case>
                 <default>
-                    <property name="discountPercent" value="0"/>
+                    <property name="discountRate" value="0%" scope="default"/>
+                    <property name="tierName" value="Regular Member" scope="default"/>
                 </default>
             </switch>
 
-            <!-- 4. Format Output Response -->
+            <!-- ============================================================ -->
+            <!-- 6. SWITCH MEDIATOR 2: PENENTUAN BIAYA ADMIN PEMBAYARAN        -->
+            <!-- ============================================================ -->
+            <switch source="get-property('paymentMethod')">
+                <case regex="BANK_TRANSFER">
+                    <property name="adminFee" value="4000" scope="default" type="INTEGER"/>
+                </case>
+                <case regex="E_WALLET">
+                    <property name="adminFee" value="1500" scope="default" type="INTEGER"/>
+                </case>
+                <case regex="CREDIT_CARD">
+                    <property name="adminFee" value="25000" scope="default" type="INTEGER"/>
+                </case>
+                <default>
+                    <property name="adminFee" value="0" scope="default" type="INTEGER"/>
+                </default>
+            </switch>
+
+            <!-- ============================================================ -->
+            <!-- 7. HEADER MEDIATOR: MENAMBAHKAN CUSTOM TRACE HEADER          -->
+            <!-- ============================================================ -->
+            <header name="X-Trace-ID" expression="fn:concat('TRX-', get-property('orderId'))" scope="transport"/>
+
+            <!-- ============================================================ -->
+            <!-- 8. PAYLOADFACTORY: MENYUSUN JSON RESPONSE LENGKAP             -->
+            <!-- ============================================================ -->
             <payloadFactory media-type="json">
                 <format>
                     {
                         "status": "SUCCESS",
-                        "summary": {
-                            "unit_price": $1,
-                            "quantity": $2,
-                            "voucher_applied": "$3",
-                            "discount_percent": "$4%"
+                        "data": {
+                            "order_id": "$1",
+                            "customer_id": "$2",
+                            "tier": "$3",
+                            "item_name": "$4",
+                            "unit_price": $5,
+                            "quantity": $6,
+                            "discount": "$7",
+                            "payment": {
+                                "method": "$8",
+                                "admin_fee": $9
+                            },
+                            "channel": "$10",
+                            "processed_at": "$11"
                         }
                     }
                 </format>
                 <args>
+                    <arg evaluator="xml" expression="get-property('orderId')"/>
+                    <arg evaluator="xml" expression="get-property('customerId')"/>
+                    <arg evaluator="xml" expression="get-property('tierName')"/>
+                    <arg evaluator="xml" expression="get-property('itemName')"/>
                     <arg evaluator="xml" expression="get-property('itemPrice')"/>
                     <arg evaluator="xml" expression="get-property('itemQty')"/>
-                    <arg evaluator="xml" expression="get-property('voucherCode')"/>
-                    <arg evaluator="xml" expression="get-property('discountPercent')"/>
+                    <arg evaluator="xml" expression="get-property('discountRate')"/>
+                    <arg evaluator="xml" expression="get-property('paymentMethod')"/>
+                    <arg evaluator="xml" expression="get-property('adminFee')"/>
+                    <arg evaluator="xml" expression="get-property('channelId')"/>
+                    <arg evaluator="xml" expression="get-property('SYSTEM_DATE', 'yyyy-MM-dd HH:mm:ss')"/>
                 </args>
             </payloadFactory>
 
+            <!-- ============================================================ -->
+            <!-- 9. SET HTTP STATUS 200 OK & RESPOND KE CLIENT                -->
+            <!-- ============================================================ -->
+            <property name="HTTP_SC" value="200" scope="axis2"/>
             <respond/>
         </inSequence>
+
+        <!-- ============================================================ -->
+        <!-- FAULT SEQUENCE: PENANGANAN JIKA TERJADI ERROR SISTEM          -->
+        <!-- ============================================================ -->
+        <faultSequence>
+            <log level="custom">
+                <property name="ERROR" value="Terjadi exception pada alur OrderCheckoutAPI"/>
+                <property name="CODE" expression="get-property('ERROR_CODE')"/>
+                <property name="MESSAGE" expression="get-property('ERROR_MESSAGE')"/>
+            </log>
+            <property name="HTTP_SC" value="500" scope="axis2"/>
+            <payloadFactory media-type="json">
+                <format>
+                    {
+                        "status": "INTERNAL_SERVER_ERROR",
+                        "error_code": "$1",
+                        "error_message": "$2"
+                    }
+                </format>
+                <args>
+                    <arg evaluator="xml" expression="get-property('ERROR_CODE')"/>
+                    <arg evaluator="xml" expression="get-property('ERROR_MESSAGE')"/>
+                </args>
+            </payloadFactory>
+            <respond/>
+        </faultSequence>
     </resource>
 </api>
 ```
 
 ---
 
-## 4. Ringkasan & Checklist Modul 2
+### Langkah 3: Menjalankan / Re-deploy di WSO2 Micro Integrator
+Pastikan Micro Integrator Server sedang aktif (via extension panel WSO2 Micro Integrator atau `micro-integrator.bat`). Artefak API baru akan otomatis terdeteksi atau dideploy.
 
-- [x] Paham 3 Scope utama: `default`, `axis2`, dan `transport`.
-- [x] Menguasai `<property>` dengan nilai statis maupun dinamis (`json-eval` & `get-property`).
-- [x] Menguasai perancangan payload JSON dinamis dengan `<payloadFactory>`.
-- [x] Menguasai alur percabangan dengan `<filter>` dan `<switch>`.
-- [x] Memahami perbedaan `<call>`, `<send>`, `<respond>`, dan `<drop>`.
+---
+
+### Langkah 4: Pengujian & Skenario Test Lengkap
+
+Buka terminal baru di Antigravity IDE atau gunakan Postman untuk menguji skenario berikut:
+
+#### Skenario 1: Test Berhasil / Happy Flow (Status 200 OK)
+Kirim request dengan Header Token yang benar dan body valid:
+
+```powershell
+curl.exe -X POST http://localhost:8290/order/checkout `
+  -H "Content-Type: application/json" `
+  -H "Authorization: Bearer SECRET123" `
+  -H "Channel-ID: MOBILE_APP" `
+  -d '{"order_id":"ORD-9901","customer_id":"CUST-007","membership":"VIP","item":"Laptop ASUS ROG","price":20000000,"quantity":1,"payment_method":"BANK_TRANSFER"}'
+```
+
+**Expected Response (200 OK):**
+```json
+{
+  "status": "SUCCESS",
+  "data": {
+    "order_id": "ORD-9901",
+    "customer_id": "CUST-007",
+    "tier": "VIP Priority Customer",
+    "item_name": "Laptop ASUS ROG",
+    "unit_price": 20000000,
+    "quantity": 1,
+    "discount": "15%",
+    "payment": {
+      "method": "BANK_TRANSFER",
+      "admin_fee": 4000
+    },
+    "channel": "MOBILE_APP",
+    "processed_at": "2026-09-02 10:20:00"
+  }
+}
+```
+
+---
+
+#### Skenario 2: Test Keamanan / Token Salah (Status 401 Unauthorized)
+Kirim request dengan token yang salah:
+
+```powershell
+curl.exe -X POST http://localhost:8290/order/checkout `
+  -H "Content-Type: application/json" `
+  -H "Authorization: Bearer WRONG_TOKEN" `
+  -d '{"order_id":"ORD-9901","price":1000,"quantity":1}'
+```
+
+**Expected Response (401 Unauthorized):**
+```json
+{
+  "status": "UNAUTHORIZED",
+  "message": "Token otentikasi tidak valid atau header Authorization tidak ditemukan."
+}
+```
+
+---
+
+#### Skenario 3: Test Validasi Input Negatif (Status 400 Bad Request)
+Kirim request dengan `price` atau `quantity` bernilai `0` atau negatif:
+
+```powershell
+curl.exe -X POST http://localhost:8290/order/checkout `
+  -H "Content-Type: application/json" `
+  -H "Authorization: Bearer SECRET123" `
+  -d '{"order_id":"ORD-9901","item":"Buku","price":-5000,"quantity":0,"membership":"REGULAR","payment_method":"E_WALLET"}'
+```
+
+**Expected Response (400 Bad Request):**
+```json
+{
+  "status": "BAD_REQUEST",
+  "message": "Harga (price) dan jumlah (quantity) harus lebih besar dari 0."
+}
+```
+
+---
+
+## 5. Ringkasan & Checklist Modul 2
+
+- [x] Paham 3 Scope utama: `default` (variabel lokal), `axis2` (HTTP status/engine), dan `transport` (HTTP headers).
+- [x] Menguasai `<property>` dengan nilai statis maupun dinamis (`json-eval`, `get-property`, dan tipe data).
+- [x] Menguasai perancangan payload JSON dinamis dengan `<payloadFactory>` (perbedaan string `"$1"` vs numeric `$2`).
+- [x] Menguasai alur percabangan dengan `<filter>` (if-else) dan `<switch>` (multi-case).
+- [x] Menguasai manipulasi HTTP Headers menggunakan `<header>`.
+- [x] Memahami kontrol alur dengan `<respond>` dan penanganan error terpusat di `<faultSequence>`.
+- [x] Berhasil mengimplementasikan dan menguji API Order & Payment Processing secara end-to-end.
