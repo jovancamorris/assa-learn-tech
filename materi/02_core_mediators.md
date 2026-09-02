@@ -324,13 +324,13 @@ Masukkan seluruh kode konfigurasi berikut ke dalam file `OrderCheckoutAPI.xml`:
             <!-- ============================================================ -->
             <!-- 3. EKSTRAKSI PAYLOAD JSON REQUEST KE DEFAULT PROPERTIES      -->
             <!-- ============================================================ -->
-            <property name="orderId" expression="json-eval($.order_id)" type="STRING"/>
-            <property name="customerId" expression="json-eval($.customer_id)" type="STRING"/>
-            <property name="membership" expression="json-eval($.membership)" type="STRING"/>
-            <property name="itemName" expression="json-eval($.item)" type="STRING"/>
-            <property name="itemPrice" expression="json-eval($.price)" type="DOUBLE"/>
-            <property name="itemQty" expression="json-eval($.quantity)" type="INTEGER"/>
-            <property name="paymentMethod" expression="json-eval($.payment_method)" type="STRING"/>
+            <property name="orderId" expression="json-eval($.order_id)" scope="default"/>
+            <property name="customerId" expression="json-eval($.customer_id)" scope="default"/>
+            <property name="membership" expression="json-eval($.membership)" scope="default"/>
+            <property name="itemName" expression="json-eval($.item)" scope="default"/>
+            <property name="itemPrice" expression="json-eval($.price)" scope="default"/>
+            <property name="itemQty" expression="json-eval($.quantity)" scope="default"/>
+            <property name="paymentMethod" expression="json-eval($.payment_method)" scope="default"/>
 
             <!-- ============================================================ -->
             <!-- 4. FILTER VALIDASI INPUT BISNIS (PRICE & QUANTITY)           -->
@@ -375,16 +375,16 @@ Masukkan seluruh kode konfigurasi berikut ke dalam file `OrderCheckoutAPI.xml`:
             <!-- ============================================================ -->
             <switch source="get-property('paymentMethod')">
                 <case regex="BANK_TRANSFER">
-                    <property name="adminFee" value="4000" scope="default" type="INTEGER"/>
+                    <property name="adminFee" value="4000" scope="default"/>
                 </case>
                 <case regex="E_WALLET">
-                    <property name="adminFee" value="1500" scope="default" type="INTEGER"/>
+                    <property name="adminFee" value="1500" scope="default"/>
                 </case>
                 <case regex="CREDIT_CARD">
-                    <property name="adminFee" value="25000" scope="default" type="INTEGER"/>
+                    <property name="adminFee" value="25000" scope="default"/>
                 </case>
                 <default>
-                    <property name="adminFee" value="0" scope="default" type="INTEGER"/>
+                    <property name="adminFee" value="0" scope="default"/>
                 </default>
             </switch>
 
@@ -480,14 +480,35 @@ Pastikan Micro Integrator Server sedang aktif (via extension panel WSO2 Micro In
 Buka terminal baru di Antigravity IDE atau gunakan Postman untuk menguji skenario berikut:
 
 #### Skenario 1: Test Berhasil / Happy Flow (Status 200 OK)
-Kirim request dengan Header Token yang benar dan body valid:
 
+Menggunakan **`Invoke-RestMethod`** (Paling direkomendasikan di PowerShell):
+```powershell
+$headers = @{
+    "Authorization" = "Bearer SECRET123"
+    "Channel-ID"    = "MOBILE_APP"
+    "Content-Type"  = "application/json"
+}
+
+$body = @{
+    order_id       = "ORD-9901"
+    customer_id    = "CUST-007"
+    membership     = "VIP"
+    item           = "Laptop ASUS ROG"
+    price          = 20000000
+    quantity       = 1
+    payment_method = "BANK_TRANSFER"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "http://localhost:8290/order/checkout" -Method Post -Headers $headers -Body $body | ConvertTo-Json
+```
+
+Atau menggunakan **`curl.exe`**:
 ```powershell
 curl.exe -X POST http://localhost:8290/order/checkout `
   -H "Content-Type: application/json" `
   -H "Authorization: Bearer SECRET123" `
   -H "Channel-ID: MOBILE_APP" `
-  -d '{"order_id":"ORD-9901","customer_id":"CUST-007","membership":"VIP","item":"Laptop ASUS ROG","price":20000000,"quantity":1,"payment_method":"BANK_TRANSFER"}'
+  -d '{\"order_id\":\"ORD-9901\",\"customer_id\":\"CUST-007\",\"membership\":\"VIP\",\"item\":\"Laptop ASUS ROG\",\"price\":20000000,\"quantity\":1,\"payment_method\":\"BANK_TRANSFER\"}'
 ```
 
 **Expected Response (200 OK):**
@@ -515,13 +536,11 @@ curl.exe -X POST http://localhost:8290/order/checkout `
 ---
 
 #### Skenario 2: Test Keamanan / Token Salah (Status 401 Unauthorized)
-Kirim request dengan token yang salah:
-
 ```powershell
 curl.exe -X POST http://localhost:8290/order/checkout `
   -H "Content-Type: application/json" `
   -H "Authorization: Bearer WRONG_TOKEN" `
-  -d '{"order_id":"ORD-9901","price":1000,"quantity":1}'
+  -d '{\"order_id\":\"ORD-9901\",\"price\":1000,\"quantity\":1}'
 ```
 
 **Expected Response (401 Unauthorized):**
@@ -535,13 +554,11 @@ curl.exe -X POST http://localhost:8290/order/checkout `
 ---
 
 #### Skenario 3: Test Validasi Input Negatif (Status 400 Bad Request)
-Kirim request dengan `price` atau `quantity` bernilai `0` atau negatif:
-
 ```powershell
 curl.exe -X POST http://localhost:8290/order/checkout `
   -H "Content-Type: application/json" `
   -H "Authorization: Bearer SECRET123" `
-  -d '{"order_id":"ORD-9901","item":"Buku","price":-5000,"quantity":0,"membership":"REGULAR","payment_method":"E_WALLET"}'
+  -d '{\"order_id\":\"ORD-9901\",\"item\":\"Buku\",\"price\":-5000,\"quantity\":0,\"membership\":\"REGULAR\",\"payment_method\":\"E_WALLET\"}'
 ```
 
 **Expected Response (400 Bad Request):**

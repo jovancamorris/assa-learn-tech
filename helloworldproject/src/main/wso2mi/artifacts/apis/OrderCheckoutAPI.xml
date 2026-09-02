@@ -41,13 +41,13 @@
             <!-- ============================================================ -->
             <!-- 3. EKSTRAKSI PAYLOAD JSON REQUEST KE DEFAULT PROPERTIES      -->
             <!-- ============================================================ -->
-            <property name="orderId" expression="json-eval($.order_id)" type="STRING"/>
-            <property name="customerId" expression="json-eval($.customer_id)" type="STRING"/>
-            <property name="membership" expression="json-eval($.membership)" type="STRING"/>
-            <property name="itemName" expression="json-eval($.item)" type="STRING"/>
-            <property name="itemPrice" expression="json-eval($.price)" type="DOUBLE"/>
-            <property name="itemQty" expression="json-eval($.quantity)" type="INTEGER"/>
-            <property name="paymentMethod" expression="json-eval($.payment_method)" type="STRING"/>
+            <property name="orderId" expression="json-eval($.order_id)" scope="default"/>
+            <property name="customerId" expression="json-eval($.customer_id)" scope="default"/>
+            <property name="membership" expression="json-eval($.membership)" scope="default"/>
+            <property name="itemName" expression="json-eval($.item)" scope="default"/>
+            <property name="itemPrice" expression="json-eval($.price)" scope="default"/>
+            <property name="itemQty" expression="json-eval($.quantity)" scope="default"/>
+            <property name="paymentMethod" expression="json-eval($.payment_method)" scope="default"/>
 
             <!-- ============================================================ -->
             <!-- 4. FILTER VALIDASI INPUT BISNIS (PRICE & QUANTITY)           -->
@@ -92,16 +92,16 @@
             <!-- ============================================================ -->
             <switch source="get-property('paymentMethod')">
                 <case regex="BANK_TRANSFER">
-                    <property name="adminFee" value="4000" scope="default" type="INTEGER"/>
+                    <property name="adminFee" value="4000" scope="default"/>
                 </case>
                 <case regex="E_WALLET">
-                    <property name="adminFee" value="1500" scope="default" type="INTEGER"/>
+                    <property name="adminFee" value="1500" scope="default"/>
                 </case>
                 <case regex="CREDIT_CARD">
-                    <property name="adminFee" value="25000" scope="default" type="INTEGER"/>
+                    <property name="adminFee" value="25000" scope="default"/>
                 </case>
                 <default>
-                    <property name="adminFee" value="0" scope="default" type="INTEGER"/>
+                    <property name="adminFee" value="0" scope="default"/>
                 </default>
             </switch>
 
