@@ -108,7 +108,7 @@ bal new hello -t service
 *(Atau gunakan struktur package `hello/main.bal` yang sudah ada di workspace Anda).*
 
 #### Langkah 2: Tulis Kode Layanan pada `main.bal`
-Buka file `helloworldproject/hello/main.bal` di Antigravity editor dan masukkan kode berikut:
+Buka file `hello/main.bal` di Antigravity editor dan masukkan kode berikut:
 
 ```ballerina
 import ballerina/http;
@@ -145,7 +145,7 @@ service /hello on new http:Listener(9090) {
 Jika Anda membangun REST API berbasis mediator XML Synapse WSO2 MI:
 
 #### Langkah 1: Buat REST API Definition
-Buat file `HelloAPI.xml` di dalam folder `src/main/synapse-config/api/`:
+Buat file `HelloAPI.xml` di dalam folder `src/main/wso2mi/artifacts/apis/` (atau `src/main/synapse-config/api/`):
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -207,7 +207,7 @@ Buat file `HelloAPI.xml` di dalam folder `src/main/synapse-config/api/`:
 #### 1. Menjalankan Ballerina Service:
 Di terminal Antigravity IDE, masuk ke folder package dan jalankan:
 ```bash
-cd helloworldproject/hello
+cd hello
 bal run
 ```
 Output log terminal akan menunjukkan:
@@ -228,11 +228,15 @@ Running executable
 
 Buka terminal baru di Antigravity IDE atau gunakan cURL / Postman / Browser:
 
-#### Request Test:
+#### Request Test Ballerina (Port 9090):
 ```bash
-curl -X GET http://localhost:9090/hello/Jovan
+curl http://localhost:9090/hello/Jovan
 ```
-*(Atau port `8290` jika menggunakan WSO2 MI Synapse runtime: `http://localhost:8290/hello/Jovan`)*
+
+#### Request Test WSO2 Micro Integrator (Port 8290):
+```bash
+curl http://localhost:8290/hello/Jovan
+```
 
 #### Expected Response JSON:
 ```json
@@ -240,13 +244,56 @@ curl -X GET http://localhost:9090/hello/Jovan
   "status": "SUCCESS",
   "message": "Halo, Jovan! Selamat datang di Antigravity IDE WSO2 Integration.",
   "ide": "Antigravity IDE (AI-First)",
-  "server_time": "2026-09-01T16:15:00.000Z"
+  "server_time": "2026-09-02 08:41:27"
 }
 ```
 
 ---
 
-## 6. Tips Produktivitas dengan Antigravity AI Agent
+## 6. Panduan Troubleshooting & Catatan Praktis
+
+Bagian ini merangkum kendala umum yang sering ditemui saat hands-on setup beserta solusinya:
+
+### 1. Error: `Cannot find path ... helloworldproject/hello`
+- **Penyebab**: Terjadi percampuran struktur direktori antara proyek WSO2 MI (`HelloWorldProject/`) dan proyek Ballerina (`hello/`).
+- **Solusi**:
+  - Jika membuat **WSO2 MI (Synapse)**: file XML disimpan di dalam `HelloWorldProject/src/main/wso2mi/artifacts/apis/HelloAPI.xml` dan dijalankan via runtime WSO2 MI (port `8290`).
+  - Jika membuat **Ballerina**: package dibuat di root folder dengan `bal new hello -t service`, lalu masuk ke folder dengan `cd hello` (port `9090`).
+
+### 2. Error: `bal : The term 'bal' is not recognized`
+- **Penyebab**: Ballerina CLI sudah terpasang di komputer (misal: `C:\Program Files\Ballerina\bin`), namun belum terdaftar di `PATH` environment variable User, atau terminal IDE yang sedang aktif belum me-reload environment variable terbaru dari sistem operasi.
+- **Solusi**:
+  1. **Solusi Cepat (Reload PATH di terminal aktif)**:
+     ```powershell
+     $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+     bal run
+     ```
+  2. **Jalankan via Full Executable Path**:
+     ```powershell
+     & "C:\Program Files\Ballerina\bin\bal.bat" run
+     ```
+  3. **Solusi Permanen**:
+     Tambahkan path instalasi Ballerina ke Environment Variable Windows:
+     ```powershell
+     $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+     if ($userPath -notlike "*Ballerina*") {
+         [Environment]::SetEnvironmentVariable("Path", $userPath + ";C:\Program Files\Ballerina\bin", "User")
+     }
+     ```
+     Setelah itu, buka terminal baru atau restart Antigravity IDE.
+
+### 3. PowerShell Security Warning saat Menjalankan `curl`
+- **Penyebab**: Di Windows PowerShell default, `curl` dialiaskan ke `Invoke-WebRequest` yang dapat memunculkan dialog peringatan keamanan parsing skrip.
+- **Solusi**: Gunakan `curl.exe` atau `Invoke-RestMethod`:
+  ```powershell
+  curl.exe http://localhost:8290/hello/Jovan
+  # Atau
+  Invoke-RestMethod http://localhost:8290/hello/Jovan | ConvertTo-Json
+  ```
+
+---
+
+## 7. Tips Produktivitas dengan Antigravity AI Agent
 
 Ketika mengembangkan integrasi di Antigravity IDE, Anda dapat berkolaborasi langsung dengan AI Agent:
 
@@ -259,11 +306,12 @@ Ketika mengembangkan integrasi di Antigravity IDE, Anda dapat berkolaborasi lang
 
 ---
 
-## 7. Ringkasan & Checklist Modul 1
+## 8. Ringkasan & Checklist Modul 1
 
 - [x] Mengonfigurasi Antigravity IDE sebagai lingkungan pengembangan integrasi utama.
 - [x] Memahami arsitektur proyek WSO2 MI (Synapse XML) dan Modern Ballerina Workspace.
 - [x] Berhasil menulis dan mengonfigurasi layanan REST API Hello World (`/hello/{name}`).
-- [x] Menjalankan layanan secara lokal melalui Terminal Antigravity IDE.
+- [x] Menjalankan layanan WSO2 MI (port `8290`) dan Ballerina (port `9090`).
 - [x] Menguji endpoint dan menerima respons JSON status `200 OK`.
+- [x] Mengatasi kendala environment path (`bal not recognized`), resolusi direktori, dan security prompt di terminal Windows PowerShell.
 - [x] Memahami cara memanfaatkan Antigravity AI (Inline Edit `Ctrl + I`, Tab Autocomplete, dan Sidebar Agent) untuk mempercepat alur kerja integrasi.

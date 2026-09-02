@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<api xmlns="http://ws.apache.org/ns/synapse" name="HelloAPI" context="/hello">
+    <resource methods="GET" uri-template="/{name}">
+        <inSequence>
+            <!-- 1. Log request yang masuk -->
+            <log level="custom">
+                <property name="INFO" value="Menerima request Hello API"/>
+                <property name="TargetName" expression="get-property('uri.var.name')"/>
+            </log>
+
+            <!-- 2. Bentuk Response JSON -->
+            <payloadFactory media-type="json">
+                <format>
+                    {
+                        "status": "SUCCESS",
+                        "message": "Halo, $1! Selamat datang di WSO2 Micro Integrator.",
+                        "server_time": "$2"
+                    }
+                </format>
+                <args>
+                    <arg evaluator="xml" expression="get-property('uri.var.name')"/>
+                    <arg evaluator="xml" expression="get-property('SYSTEM_DATE', 'yyyy-MM-dd HH:mm:ss')"/>
+                </args>
+            </payloadFactory>
+
+            <!-- 3. Set HTTP Status Header 200 OK -->
+            <property name="HTTP_SC" value="200" scope="axis2"/>
+
+            <!-- 4. Kembalikan Response Langsung ke Client -->
+            <respond/>
+        </inSequence>
+
+        <faultSequence>
+            <payloadFactory media-type="json">
+                <format>
+                    {
+                        "status": "ERROR",
+                        "message": "Terjadi kesalahan pada sistem."
+                    }
+                </format>
+                <args/>
+            </payloadFactory>
+            <property name="HTTP_SC" value="500" scope="axis2"/>
+            <respond/>
+        </faultSequence>
+    </resource>
+</api>

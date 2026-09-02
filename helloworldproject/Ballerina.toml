@@ -1,3 +1,0 @@
-[workspace]
-title = "HelloWorldProject"
-packages = ["selflearn"]
