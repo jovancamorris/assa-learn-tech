@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<api xmlns="http://ws.apache.org/ns/synapse" name="AccountInquiryAPI" context="/account">
+    <resource methods="POST" uri-template="/inquiry">
+        <inSequence>
+            <!-- ============================================================ -->
+            <!-- 1. LOGGING REQUEST MASUK (FORMAT JSON DARI CLIENT)            -->
+            <!-- ============================================================ -->
+            <log level="custom">
+                <property name="STEP" value="1. Menerima Request JSON dari Client"/>
+            </log>
+
+            <!-- ============================================================ -->
+            <!-- 2. EKSTRAKSI FIELD JSON DARI BODY MENGGUNAKAN JSONPATH        -->
+            <!-- ============================================================ -->
+            <property name="accNumber" expression="json-eval($.account_number)" scope="default"/>
+            <property name="channelId" expression="json-eval($.channel)" scope="default"/>
+
+            <!-- ============================================================ -->
+            <!-- 3. VALIDASI INPUT BISNIS (ACCOUNT NUMBER TIDAK BOLEH KOSONG) -->
+            <!-- ============================================================ -->
+            <filter xpath="boolean(get-property('accNumber')) = false or string-length(get-property('accNumber')) &lt; 5">
+                <then>
+                    <property name="HTTP_SC" value="400" scope="axis2"/>
+                    <payloadFactory media-type="json">
+                        <format>
+                            {
+                                "status": "BAD_REQUEST",
+                                "message": "Nomor rekening (account_number) wajib diisi dan minimal 5 digit."
+                            }
+                        </format>
+                        <args/>
+                    </payloadFactory>
+                    <respond/>
+                </then>
+                <else/>
+            </filter>
+
+            <!-- ============================================================ -->
+            <!-- 4. TRANSFORMASI 1: MENGUBAH PAYLOAD JSON MENJADI SOAP XML     -->
+            <!-- ============================================================ -->
+            <payloadFactory media-type="xml">
+                <format>
+                    <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:bank="http://bank.company.internal/account">
+                        <soapenv:Header>
+                            <bank:SecurityToken>AUTH-TOKEN-SECRET-99</bank:SecurityToken>
+                        </soapenv:Header>
+                        <soapenv:Body>
+                            <bank:InquiryRequest>
+                                <bank:AccountNumber>$1</bank:AccountNumber>
+                                <bank:Channel>$2</bank:Channel>
+                            </bank:InquiryRequest>
+                        </soapenv:Body>
+                    </soapenv:Envelope>
+                </format>
+                <args>
+                    <arg evaluator="xml" expression="get-property('accNumber')"/>
+                    <arg evaluator="xml" expression="get-property('channelId')"/>
+                </args>
+            </payloadFactory>
+
+            <!-- Set Header SOAPAction dan Content-Type untuk protokol SOAP -->
+            <header name="SOAPAction" value="urn:InquiryAccount" scope="transport"/>
+            <property name="messageType" value="text/xml" scope="axis2"/>
+
+            <log level="custom">
+                <property name="STEP" value="2. Payload Berhasil Ditransformasikan ke SOAP XML"/>
+            </log>
+
+            <!-- ============================================================ -->
+            <!-- 5. SIMULASI RESPON XML BACKEND CORE BANKING                   -->
+            <!-- (Dalam skenario real, bagian ini memanggil <call><endpoint/></call>) -->
+            <!-- ============================================================ -->
+            <payloadFactory media-type="xml">
+                <format>
+                    <bank:InquiryResponse xmlns:bank="http://bank.company.internal/account">
+                        <bank:AccountNumber>$1</bank:AccountNumber>
+                        <bank:AccountName>Budi Pratama Santoso</bank:AccountName>
+                        <bank:AccountType>SAVINGS</bank:AccountType>
+                        <bank:Currency>IDR</bank:Currency>
+                        <bank:Balance>15750000.50</bank:Balance>
+                        <bank:AccountStatus>ACTIVE</bank:AccountStatus>
+                    </bank:InquiryResponse>
+                </format>
+                <args>
+                    <arg evaluator="xml" expression="get-property('accNumber')"/>
+                </args>
+            </payloadFactory>
+
+            <!-- ============================================================ -->
+            <!-- 6. TRANSFORMASI 2: MENGUBAH RESPON XML BACKEND MENJADI JSON  -->
+            <!-- ============================================================ -->
+            <payloadFactory media-type="json">
+                <format>
+                    {
+                        "status": "SUCCESS",
+                        "data": {
+                            "account_number": "$1",
+                            "customer_name": "$2",
+                            "account_type": "$3",
+                            "currency": "$4",
+                            "balance": $5,
+                            "account_status": "$6"
+                        },
+                        "channel": "$7",
+                        "processed_at": "$8"
+                    }
+                </format>
+                <args>
+                    <!-- Ekstraksi nilai tag XML menggunakan ekspresi XPath -->
+                    <arg evaluator="xml" expression="//bank:InquiryResponse/bank:AccountNumber/text()" xmlns:bank="http://bank.company.internal/account"/>
+                    <arg evaluator="xml" expression="//bank:InquiryResponse/bank:AccountName/text()" xmlns:bank="http://bank.company.internal/account"/>
+                    <arg evaluator="xml" expression="//bank:InquiryResponse/bank:AccountType/text()" xmlns:bank="http://bank.company.internal/account"/>
+                    <arg evaluator="xml" expression="//bank:InquiryResponse/bank:Currency/text()" xmlns:bank="http://bank.company.internal/account"/>
+                    <arg evaluator="xml" expression="//bank:InquiryResponse/bank:Balance/text()" xmlns:bank="http://bank.company.internal/account"/>
+                    <arg evaluator="xml" expression="//bank:InquiryResponse/bank:AccountStatus/text()" xmlns:bank="http://bank.company.internal/account"/>
+                    <arg evaluator="xml" expression="get-property('channelId')"/>
+                    <arg evaluator="xml" expression="get-property('SYSTEM_DATE', 'yyyy-MM-dd HH:mm:ss')"/>
+                </args>
+            </payloadFactory>
+
+            <!-- ============================================================ -->
+            <!-- 7. SET RESPONSE HEADER 200 OK & KEMBALIKAN KE CLIENT         -->
+            <!-- ============================================================ -->
+            <property name="HTTP_SC" value="200" scope="axis2"/>
+            <property name="messageType" value="application/json" scope="axis2"/>
+            <respond/>
+        </inSequence>
+
+        <!-- ============================================================ -->
+        <!-- FAULT SEQUENCE: PENANGANAN JIKA TERJADI TIMEOUT / ERROR      -->
+        <!-- ============================================================ -->
+        <faultSequence>
+            <log level="custom">
+                <property name="ERROR" value="Terjadi kesalahan pada AccountInquiryAPI"/>
+                <property name="ERROR_CODE" expression="get-property('ERROR_CODE')"/>
+                <property name="ERROR_MESSAGE" expression="get-property('ERROR_MESSAGE')"/>
+            </log>
+            <property name="HTTP_SC" value="500" scope="axis2"/>
+            <payloadFactory media-type="json">
+                <format>
+                    {
+                        "status": "ERROR",
+                        "error_code": "$1",
+                        "error_message": "Gagal menghubungi backend Core Banking."
+                    }
+                </format>
+                <args>
+                    <arg evaluator="xml" expression="get-property('ERROR_CODE')"/>
+                </args>
+            </payloadFactory>
+            <respond/>
+        </faultSequence>
+    </resource>
+</api>
