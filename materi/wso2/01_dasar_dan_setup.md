@@ -226,19 +226,48 @@ Running executable
 
 ### Cara Menguji API (Testing):
 
-Buka terminal baru di Antigravity IDE atau gunakan cURL / Postman / Browser:
+Buka terminal baru di Antigravity IDE (`Ctrl + \``) atau gunakan cURL / Postman / Browser.
 
-#### Request Test Ballerina (Port 9090):
-```bash
-curl http://localhost:9090/hello/Jovan
-```
+---
 
-#### Request Test WSO2 Micro Integrator (Port 8290):
-```bash
-curl http://localhost:8290/hello/Jovan
-```
+### Panduan Menguji API via Terminal: `curl.exe` vs `Invoke-RestMethod` (PowerShell)
 
-#### Expected Response JSON:
+Banyak developer bertanya: *"Apakah `Invoke-RestMethod` itu seperti `curl` dan bisa langsung diketik di terminal?"*
+
+**Jawabannya: Ya, betul sekali!**  
+`Invoke-RestMethod` (atau alias singkatnya **`irm`**) adalah cmdlet bawaan **Windows PowerShell** untuk berinteraksi dengan REST API langsung dari terminal. 
+
+#### Mengapa `Invoke-RestMethod` Sangat Direkomendasikan di Windows?
+1. **Otomatis Parse JSON:** Jika server mengembalikan JSON, `Invoke-RestMethod` langsung mengubahnya menjadi objek PowerShell. Anda bisa langsung mengambil nilai field-nya (misal: `$res.status`) tanpa perlu bantuan tool eksternal seperti `jq`.
+2. **Tidak Perlu Instal Eksternal:** Selalu tersedia di semua instalasi Windows 10/11 dan Windows Server.
+
+---
+
+#### 1. Pengujian Metode GET Sederhana
+
+##### A. Request Test Ballerina (Port 9090):
+* **Pakai `curl.exe`:**
+  ```powershell
+  curl.exe http://localhost:9090/hello/Jovan
+  ```
+* **Pakai `Invoke-RestMethod` (atau `irm`):**
+  ```powershell
+  Invoke-RestMethod -Uri "http://localhost:9090/hello/Jovan" -Method Get
+  # Atau versi super singkat:
+  irm http://localhost:9090/hello/Jovan
+  ```
+
+##### B. Request Test WSO2 Micro Integrator (Port 8290):
+* **Pakai `curl.exe`:**
+  ```powershell
+  curl.exe http://localhost:8290/hello/Jovan
+  ```
+* **Pakai `Invoke-RestMethod`:**
+  ```powershell
+  irm http://localhost:8290/hello/Jovan
+  ```
+
+##### Expected Response JSON:
 ```json
 {
   "status": "SUCCESS",
@@ -246,6 +275,52 @@ curl http://localhost:8290/hello/Jovan
   "ide": "Antigravity IDE (AI-First)",
   "server_time": "2026-09-02 08:41:27"
 }
+```
+
+---
+
+#### 2. Pengujian Metode POST dengan Request Body JSON
+Ketika Anda menguji API yang membutuhkan payload (misalnya `AccountInquiryAPI` pada URL `http://localhost:8290/account/inquiry`):
+
+* **Pakai `curl.exe`:**
+  ```powershell
+  curl.exe -X POST http://localhost:8290/account/inquiry -H "Content-Type: application/json" -d "{\"accountNo\": \"123456\"}"
+  ```
+
+* **Pakai `Invoke-RestMethod`:**
+  ```powershell
+  Invoke-RestMethod -Uri "http://localhost:8290/account/inquiry" `
+    -Method Post `
+    -ContentType "application/json" `
+    -Body '{"accountNo": "123456"}'
+  ```
+
+---
+
+#### 3. Mengirim Custom Headers & Authorization Token
+Jika API WSO2 Anda diproteksi oleh Bearer Token atau custom header:
+
+```powershell
+# Buat header dalam bentuk hashtable PowerShell
+$headers = @{
+    "Authorization" = "Bearer eyJhbGciOiJIUzI1NiIsIn..."
+    "X-Client-ID"   = "MOBILE_APP"
+}
+
+# Kirim request dengan parameter -Headers
+Invoke-RestMethod -Uri "http://localhost:8290/account/inquiry" `
+  -Method Post `
+  -Headers $headers `
+  -ContentType "application/json" `
+  -Body '{"accountNo": "123456"}'
+```
+
+---
+
+#### 4. Memformat Output JSON Agar Rapi
+Gunakan pipe ke `ConvertTo-Json`:
+```powershell
+irm http://localhost:8290/hello/Jovan | ConvertTo-Json
 ```
 
 ---
