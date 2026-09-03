@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<messageProcessor xmlns="http://ws.apache.org/ns/synapse" 
+                  class="org.apache.synapse.message.processor.impl.forwarder.ScheduledMessageForwardingProcessor" 
+                  name="OrderForwarderProcessor" 
+                  targetEndpoint="OrderProcessingBackendEP" 
+                  messageStore="OrderPendingStore">
+    <parameter name="interval">2000</parameter>
+    <parameter name="max.delivery.attempts">4</parameter>
+    <parameter name="client.retry.interval">3000</parameter>
+    <parameter name="message.processor.fault.sequence">OrderFailureDLQSeq</parameter>
+    <parameter name="is.active">true</parameter>
+</messageProcessor>

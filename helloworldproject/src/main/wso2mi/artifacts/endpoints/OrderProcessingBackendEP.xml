@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<endpoint xmlns="http://ws.apache.org/ns/synapse" name="OrderProcessingBackendEP">
+    <http method="post" uri-template="https://httpbin.org/post">
+        <timeout>
+            <duration>5000</duration>
+            <responseAction>fault</responseAction>
+        </timeout>
+        <suspendOnFailure>
+            <initialDuration>10000</initialDuration>
+            <progressionFactor>2.0</progressionFactor>
+            <maximumDuration>60000</maximumDuration>
+        </suspendOnFailure>
+    </http>
+</endpoint>

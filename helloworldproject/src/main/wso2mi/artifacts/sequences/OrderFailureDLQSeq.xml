@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sequence xmlns="http://ws.apache.org/ns/synapse" name="OrderFailureDLQSeq">
+    <log level="custom">
+        <property name="ALERT" value="[DLQ-TRIGGERED] Pesanan gagal dikirim setelah melebihi batas retry maksimum!"/>
+        <property name="ERROR_CODE" expression="get-property('ERROR_CODE')"/>
+        <property name="ERROR_MESSAGE" expression="get-property('ERROR_MESSAGE')"/>
+    </log>
+    <!-- Logika audit atau pengiriman ke Dead Letter Queue eksternal -->
+    <property name="DLQ_STORED_AT" expression="get-property('SYSTEM_DATE', 'yyyy-MM-dd HH:mm:ss')" scope="default"/>
+    <drop/>
+</sequence>

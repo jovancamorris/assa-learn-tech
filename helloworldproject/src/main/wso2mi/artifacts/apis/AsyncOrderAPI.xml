@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<api xmlns="http://ws.apache.org/ns/synapse" name="AsyncOrderAPI" context="/async-order">
+    <resource methods="POST" uri-template="/submit">
+        <inSequence>
+            <!-- 1. Log request yang masuk -->
+            <log level="custom">
+                <property name="STEP" value="1. Menerima Pesanan Asinkron dari Client"/>
+            </log>
+
+            <!-- 2. Ekstraksi data pesanan untuk audit -->
+            <property name="orderUser" expression="json-eval($.customer_name)" scope="default"/>
+            <property name="orderProduct" expression="json-eval($.product_id)" scope="default"/>
+            <property name="orderQty" expression="json-eval($.quantity)" scope="default"/>
+
+            <!-- Validasi Input Dasar -->
+            <filter xpath="boolean(get-property('orderProduct')) = false or boolean(get-property('orderQty')) = false">
+                <then>
+                    <property name="HTTP_SC" value="400" scope="axis2"/>
+                    <payloadFactory media-type="json">
+                        <format>
+                            {
+                                "status": "BAD_REQUEST",
+                                "message": "Field product_id dan quantity wajib diisi."
+                            }
+                        </format>
+                        <args/>
+                    </payloadFactory>
+                    <respond/>
+                </then>
+                <else/>
+            </filter>
+
+            <!-- 3. Simpan Pesan ke dalam Message Store (Store-and-Forward) -->
+            <store messageStore="OrderPendingStore"/>
+
+            <!-- 4. Segera Berikan Respon Cepat 202 Accepted ke Klien (Non-blocking) -->
+            <property name="HTTP_SC" value="202" scope="axis2"/>
+            <payloadFactory media-type="json">
+                <format>
+                    {
+                        "status": "ACCEPTED",
+                        "tracking_id": "$1",
+                        "message": "Pesanan Anda berhasil diamankan dalam antrean pemrosesan terjamin (Guaranteed Delivery).",
+                        "customer": "$2",
+                        "received_at": "$3"
+                    }
+                </format>
+                <args>
+                    <arg evaluator="xml" expression="fn:concat('TRK-', get-property('SYSTEM_DATE', 'yyyyMMddHHmmss'))"/>
+                    <arg evaluator="xml" expression="get-property('orderUser')"/>
+                    <arg evaluator="xml" expression="get-property('SYSTEM_DATE', 'yyyy-MM-dd HH:mm:ss')"/>
+                </args>
+            </payloadFactory>
+            <property name="messageType" value="application/json" scope="axis2"/>
+            <respond/>
+        </inSequence>
+    </resource>
+</api>
